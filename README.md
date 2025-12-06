@@ -21,3 +21,15 @@ Tests live in `tests/` and cover data ingestion, preprocessing, and modeling rou
 2. Install dependencies: `pip install -r requirements.txt`.
 3. Copy `.env.example` to `.env` and adjust paths as needed.
 4. Run the test suite with `pytest`.
+
+## Development workflow
+
+Common tasks are available through the `Makefile`:
+
+* `make setup` – install dependencies from `requirements.txt`.
+* `make lint` – run Ruff, Flake8, and a Black formatting check.
+* `make test` – execute the pytest suite.
+* `make run` – launch the demo CLI (`python -m src.cli`).
+
+Pre-commit hooks are configured to enforce formatting and linting. Install them with
+`pre-commit install` after setting up the virtual environment.
