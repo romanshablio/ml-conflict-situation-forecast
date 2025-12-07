@@ -21,7 +21,7 @@ ml-conflict-situation-forecast/
 ├─ data/
 │  └─ train.csv                 # датасет Jigsaw (скачивается отдельно и кладётся сюда)
 ├─ models/
-│  ├─ baseline_model.pkl        # обученная baseline ML‑модель (создаётся после обучения)
+│  ├─ baseline_model.pkl        # обученная baseline ML‑модель (создаётся после обучения или скачивается отдельно)
 │  ├─ tokenizer.pkl             # задел под DL‑модель (будет использоваться в ВКР)
 │  └─ dl_model.h5               # задел под DL‑модель (будет использоваться в ВКР)
 ├─ src/
@@ -55,7 +55,7 @@ ml-conflict-situation-forecast/
 1. **Клонируйте репозиторий**
 
    ```bash
-   git clone https://github.com/&lt;user&gt;/ml-conflict-situation-forecast.git
+   git clone https://github.com/romanshablio/ml-conflict-situation-forecast.git
    cd ml-conflict-situation-forecast
    ```
 
@@ -73,16 +73,31 @@ ml-conflict-situation-forecast/
    pip install -r requirements.txt
    ```
 
-4. **Скачайте датасет Jigsaw и поместите его в `data/`**
+4. **Подготовьте внешние файлы (датасет и модель)**
 
    Используется открытый датасет *Jigsaw Toxic Comment Classification Challenge*  
-   (Jigsaw / Kaggle / HuggingFace). Необходимо скачать файл `train.csv` и сохранить его по пути:
+   (Jigsaw / Kaggle / HuggingFace). По условиям лицензирования и из‑за большого размера
+   исходные данные и обученные модели **не размещаются в открытом репозитории GitHub**.
+
+   Для удобства проверки подготовлена общая папка на Google Drive:
+
+   👉 https://drive.google.com/drive/folders/1J-vftGANncLTPWcX7b7MGhfnJwSfVZnd?usp=sharing
+
+   В ней находятся:
+
+   - `data/train.csv` — датасет Jigsaw для обучения baseline‑модели;
+   - `models/baseline_model.pkl` — обученная baseline‑модель.
+
+   После скачивания необходимо поместить в директорию проекта по указанным путям:
 
    ```text
    ml-conflict-situation-forecast/data/train.csv
+   ml-conflict-situation-forecast/models/baseline_model.pkl
    ```
 
-5. **Обучите baseline‑модель**
+   Если `baseline_model.pkl` не скачивать, её можно обучить локально (см. шаг 5).
+
+5. **Обучите baseline‑модель (если нужно)**
 
    ```bash
    (venv) python -m src.baseline_model
