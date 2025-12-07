@@ -1,55 +1,5 @@
 # ml-conflict-situation-forecast
 
-Репозиторий для учебной практики и подготовки диплома по теме прогнозирования развития конфликтных ситуаций методами машинного и
-нтеллекта: датасеты, эксперименты, прототипы моделей и вспомогательный код.
-
-## Project layout
-
-```
-conflict_prediction/
-├─ data/
-│  └─ train.csv                 # датасет Jigsaw (скачиваешь с Kaggle и кладёшь сюда)
-├─ models/
-│  ├─ tokenizer.pkl             # сохранённый токенайзер (после обучения)
-│  ├─ dl_model.h5               # обученная DL-модель (Keras)
-│  └─ baseline_model.pkl        # ML-модель
-├─ notebooks/
-│  └─ experiments.ipynb         # эксперименты (по желанию)
-├─ src/
-│  ├─ __init__.py
-│  ├─ config.py                 # общие настройки
-│  ├─ data_utils.py             # загрузка/подготовка данных
-│  ├─ dl_model.py               # архитектура и обучение DL-модели
-│  ├─ baseline_model.py         # baseline ML-модель
-│  ├─ model_service.py          # обёртка инференса (загрузка моделей, предсказание)
-│  └─ app.py                    # Flask-приложение (API для интерфейса)
-├─ requirements.txt
-└─ README.md
-```
-
-Tests live in `tests/` and cover data ingestion, preprocessing, and modeling routines.
-
-## Environment setup
-
-1. Create a virtual environment (e.g., `python -m venv .venv` and `source .venv/bin/activate`).
-2. Install dependencies: `pip install -r requirements.txt`.
-3. Copy `.env.example` to `.env` and adjust paths as needed.
-4. Run the test suite with `pytest`.
-
-## Development workflow
-
-Common tasks are available through the `Makefile`:
-
-* `make setup` – install dependencies from `requirements.txt`.
-* `make lint` – run Ruff, Flake8, and a Black formatting check.
-* `make test` – execute the pytest suite.
-* `make run` – launch the demo CLI (`python -m src.cli`).
-
-Pre-commit hooks are configured to enforce formatting and linting. Install them with
-`pre-commit install` after setting up the virtual environment.
-
-# ml-conflict-situation-forecast
-
 Репозиторий для учебной преддипломной практики и подготовки ВКР по теме  
 «Прогнозирование развития конфликтных ситуаций методами машинного интеллекта».
 
