@@ -72,12 +72,11 @@ class ConflictPredictionService:
         threshold: Optional[float] = None,
     ) -> PredictionResult:
         """
-        Предсказание для одного текста.
-
-        Возвращает:
-        - вероятность токсичности (conflict_score)
+                Возвращает:
+        - вероятность конфликтности (conflict_score)
         - уровень риска (risk_level)
-        - словарь labels с одной меткой: {"toxic": p_toxic}
+        - словарь labels с вероятностями по типам токсичности:
+          { "toxic": ..., "insult": ..., "threat": ..., "obscene": ... }
         """
         if self.model is None:
             raise RuntimeError("Модель не загружена. Сначала обучите её и перезапустите сервис.")
