@@ -19,7 +19,8 @@
 ```
 ml-conflict-situation-forecast/
 ├─ data/
-│  └─ train.csv                 # датасет Jigsaw (скачивается отдельно и кладётся сюда)
+│  ├─ ru_toxic_2ch_pikabu.csv   # русскоязычный датасет токсичности (2ch.hk + pikabu.ru, Kaggle)
+│  └─ ru_toxic_ok.txt           # русскоязычный датасет токсичности (ok.ru, Kaggle, fastText-формат)
 ├─ models/
 │  ├─ baseline_model.pkl        # обученная baseline ML‑модель (создаётся после обучения или скачивается отдельно)
 │  ├─ tokenizer.pkl             # задел под DL‑модель (будет использоваться в ВКР)
@@ -28,9 +29,9 @@ ml-conflict-situation-forecast/
 │  ├─ __init__.py
 │  ├─ config.py                 # общие настройки путей и параметров
 │  ├─ data_utils.py             # загрузка и разбиение данных для моделей ML
-│  ├─ baseline_model.py         # обучение baseline‑модели (TF‑IDF + LogisticRegression)
+│  ├─ baseline_model.py         # обучение baseline‑модели токсичности на русскоязычных данных
 │  ├─ dl_model.py               # архитектура и обучение DL‑модели (проект, на будущее)
-│  ├─ model_service.py          # сервис инференса поверх baseline‑модели
+│  ├─ model_service.py          # сервис инференса для русскоязычной baseline‑модели
 │  └─ app.py                    # Flask‑приложение, REST‑API и отдача index.html
 ├─ index.html                   # прототип веб‑интерфейса (быстрый анализ, пакетный анализ и пр.)
 ├─ requirements.txt             # зависимости Python
@@ -45,7 +46,7 @@ ml-conflict-situation-forecast/
 
 - Python 3.9+  
 - виртуальное окружение (`venv` или аналог);  
-- доступ к интернету для первоначального скачивания датасета Jigsaw (через браузер);  
+- исходные русскоязычные датасеты токсичных комментариев скачиваются отдельно с Kaggle или Google Drive (ссылка ниже);  
 - ОС: macOS / Linux / Windows.
 
 ---
@@ -75,9 +76,10 @@ ml-conflict-situation-forecast/
 
 4. **Подготовьте внешние файлы (датасет и модель)**
 
-   Используется открытый датасет *Jigsaw Toxic Comment Classification Challenge*  
-   (Jigsaw / Kaggle / HuggingFace). По условиям лицензирования и из‑за большого размера
-   исходные данные и обученные модели **не размещаются в открытом репозитории GitHub**.
+   Используются два открытых русскоязычных датасета токсичных комментариев с Kaggle:  
+   — 2ch.hk + Pikabu.ru (CSV-формат)  
+   — ok.ru (fastText-формат, TXT)  
+   По условиям лицензирования и из‑за большого размера исходные данные и обученные модели **не размещаются в открытом репозитории GitHub**.
 
    Для удобства проверки подготовлена общая папка на Google Drive:
 
@@ -85,13 +87,15 @@ ml-conflict-situation-forecast/
 
    В ней находятся:
 
-   - `data/train.csv` — датасет Jigsaw для обучения baseline‑модели;
-   - `models/baseline_model.pkl` — обученная baseline‑модель.
+   - `data/ru_toxic_2ch_pikabu.csv` — датасет токсичности 2ch.hk + pikabu.ru (Kaggle)
+   - `data/ru_toxic_ok.txt` — датасет токсичности ok.ru (Kaggle, fastText-формат)
+   - `models/baseline_model.pkl` — обученная baseline‑модель
 
    После скачивания необходимо поместить в директорию проекта по указанным путям:
 
    ```text
-   ml-conflict-situation-forecast/data/train.csv
+   ml-conflict-situation-forecast/data/ru_toxic_2ch_pikabu.csv
+   ml-conflict-situation-forecast/data/ru_toxic_ok.txt
    ml-conflict-situation-forecast/models/baseline_model.pkl
    ```
 
@@ -133,9 +137,9 @@ ml-conflict-situation-forecast/
 
 ### `baseline_model.py`
 
-- загружает данные из `data/train.csv` через `data_utils.py`;
+- загружает два русскоязычных датасета токсичных комментариев, объединяет их;
 - формирует ML‑pipeline (TF‑IDF + `OneVsRestClassifier(LogisticRegression)`);
-- обучает модель и сохраняет её в `models/baseline_model.pkl`;
+- обучает бинарную модель "toxic / non_toxic" и сохраняет её в `models/baseline_model.pkl`;
 - выводит базовые метрики качества (classification report) в консоль.
 
 ### `model_service.py`
@@ -145,7 +149,7 @@ ml-conflict-situation-forecast/
   - `predict_single(text: str) -> dict`
   - `predict_batch(texts: List[str]) -> List[dict]`
 - возвращает:
-  - вероятности по классам токсичности (toxic, insult, threat, obscene, severe_toxic, identity_hate);
+  - вероятность токсичности (один класс);
   - агрегированный `conflict_score` и уровень риска.
 
 ### `app.py`
@@ -161,17 +165,12 @@ ml-conflict-situation-forecast/
 ```json
 {
   "text": "...",
-  "model": "ml",
+  "model": "ml_ru",
   "conflict_score": 0.42,
   "risk_level": "medium",
   "threshold": 0.7,
   "labels": {
-    "toxic": 0.42,
-    "insult": 0.21,
-    "threat": 0.03,
-    "obscene": 0.15,
-    "severe_toxic": 0.05,
-    "identity_hate": 0.01
+    "toxic": 0.42
   }
 }
 ```
@@ -188,11 +187,9 @@ ml-conflict-situation-forecast/
 
 ## Ограничения и планы развития
 
-- baseline‑модель обучена на англоязычном датасете Jigsaw, поэтому качество анализа
-  русскоязычных сообщений ограничено; прототип используется для демонстрации
-  архитектуры и рабочих механизмов системы.
+- baseline‑модель обучена на русскоязычных корпусах токсичных комментариев (2ch, Pikabu, ok.ru). Эти данные шумные и тематически специфичные, из‑за чего возможны ложные срабатывания и ошибки классификации для нейтральных или нестандартных текстов. Прототип используется для демонстрации архитектуры и рабочих механизмов системы.
 - в рамках ВКР планируется:
-  - адаптация модели под русскоязычные данные;
+  - дальнейшее улучшение качества модели на русскоязычных данных;
   - обучение и интеграция DL‑модели (LSTM/GRU или трансформер);
   - реализация реального пакетного анализа и истории запусков;
   - расширение отчётности и метрик.
