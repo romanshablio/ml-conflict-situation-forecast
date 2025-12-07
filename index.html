@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Прогноз конфликтных ситуаций</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg: #f5f5f7;
+      --bg-card: #ffffff;
+      --border: #d0d0d7;
+      --accent: #3f73ff;
+      --accent-soft: #e3ebff;
+      --danger: #ff4d4f;
+      --text-main: #222;
+      --text-muted: #666;
+      --shadow-soft: 0 8px 20px rgba(0, 0, 0, 0.05);
+      --radius-lg: 14px;
+      --radius-md: 10px;
+      --radius-sm: 6px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text-main);
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow-soft);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .header-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .logo-block {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #3f73ff, #8b5cf6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 700;
+      font-size: 18px;
+      box-shadow: 0 6px 16px rgba(63, 115, 255, 0.35);
+    }
+
+    .logo-text-main {
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .logo-text-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .nav-btn {
+      border: none;
+      background: transparent;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .nav-btn:hover {
+      background: #f1f3ff;
+      color: var(--accent);
+    }
+
+    .nav-btn.active {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(63, 115, 255, 0.4);
+    }
+
+    main {
+      flex: 1;
+    }
+
+    .page {
+      max-width: 1120px;
+      margin: 20px auto 40px;
+      padding: 0 20px;
+    }
+
+    .section {
+      display: none;
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    .section-title {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .section-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+
+    .layout-two-column {
+      display: grid;
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .layout-two-column {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .card {
+      background: var(--bg-card);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-soft);
+      padding: 18px 18px 16px;
+      border: 1px solid rgba(0, 0, 0, 0.03);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      gap: 10px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .card-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    label {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 4px;
+      display: inline-block;
+    }
+
+    .field-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    textarea,
+    input[type="text"],
+    input[type="number"],
+    input[type="file"],
+    select {
+      width: 100%;
+      font-size: 13px;
+      padding: 8px 10px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      outline: none;
+      background: #fff;
+      transition: border 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+    }
+
+    textarea:focus,
+    input:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-soft);
+    }
+
+    .field-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .field-row > div {
+      flex: 1 1 160px;
+    }
+
+    .btn-primary,
+    .btn-secondary,
+    .btn-ghost {
+      font-size: 13px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(63, 115, 255, 0.4);
+    }
+
+    .btn-primary:hover {
+      background: #335ee6;
+    }
+
+    .btn-secondary {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .btn-secondary:hover {
+      background: #d9e2ff;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+    }
+
+    .btn-ghost:hover {
+      background: #f0f0f3;
+    }
+
+    .btn-primary:active,
+    .btn-secondary:active,
+    .btn-ghost:active {
+      transform: translateY(1px);
+      box-shadow: none;
+    }
+
+    .results-block {
+      font-size: 13px;
+      border-radius: var(--radius-md);
+      border: 1px dashed var(--border);
+      padding: 12px 12px 10px;
+      background: #fafbff;
+    }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      margin-bottom: 8px;
+      align-items: center;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .pill-risk-low {
+      background: #e5f8e8;
+      color: #218838;
+    }
+
+    .pill-risk-medium {
+      background: #fff5d6;
+      color: #996c00;
+    }
+
+    .pill-risk-high {
+      background: #ffe5e5;
+      color: #d93025;
+    }
+
+    .pill-model {
+      background: #eef0ff;
+      color: #3949ab;
+    }
+
+    .muted {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: #ececf3;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+
+    .progress-bar-inner {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3f73ff, #8b5cf6);
+      transition: width 0.3s ease;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    th,
+    td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #ececf3;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--text-muted);
+    }
+
+    tr:hover td {
+      background: #fafbff;
+    }
+
+    .tag {
+      display: inline-flex;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #eef0ff;
+      font-size: 11px;
+      color: #3949ab;
+    }
+
+    footer {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 16px 0 22px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #f1f3ff;
+      color: #3949ab;
+    }
+
+    .checkbox-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    .checkbox-row label {
+      font-weight: 400;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 0;
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      width: auto;
+    }
+
+    .filters-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 10px;
+      align-items: flex-end;
+    }
+
+    .filters-row > div {
+      flex: 1 1 140px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 4px;
+    }
+
+    .status-dot-online {
+      background: #22c55e;
+    }
+
+    .status-dot-busy {
+      background: #facc15;
+    }
+
+    .status-dot-offline {
+      background: #9ca3af;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-inner">
+      <div class="logo-block">
+        <div class="logo-icon">C</div>
+        <div>
+          <div class="logo-text-main">Прогноз конфликтных ситуаций</div>
+          <div class="logo-text-sub">Интеллектуальный анализ текстовых сообщений</div>
+        </div>
+      </div>
+
+      <nav>
+        <button class="nav-btn active" data-section="quick">Быстрый анализ</button>
+        <button class="nav-btn" data-section="batch">Пакетный анализ</button>
+        <button class="nav-btn" data-section="history">История и отчёты</button>
+        <button class="nav-btn" data-section="train">Обучение модели*</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <main>
+    <div class="page">
+
+      <!-- SECTION: QUICK ANALYSIS -->
+      <section id="section-quick" class="section active">
+        <h1 class="section-title">Быстрый анализ сообщения</h1>
+        <p class="section-subtitle">
+          Введите текст сообщения, выберите модель и получите оценку вероятности конфликтной ситуации.
+        </p>
+
+        <div class="layout-two-column">
+
+          <!-- LEFT: INPUT -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Текст сообщения</div>
+                <div class="card-subtitle">Используется обученная модель токсичности на открытых данных</div>
+              </div>
+              <span class="badge">
+                <span class="status-dot status-dot-online"></span>
+                Модель загружена (демо)
+              </span>
+            </div>
+
+            <label for="quick-text">Введите текст сообщения</label>
+            <p class="field-hint">
+              Например, комментарий из чата, форума, соцсети или внутренней системы.
+            </p>
+            <textarea id="quick-text" placeholder="Введите текст, который нужно проверить на конфликтогенность..."></textarea>
+
+            <div class="field-row">
+              <div>
+                <label for="quick-model">Модель анализа</label>
+                <select id="quick-model">
+                  <option value="ml">Базовая ML-модель (градиентный бустинг)</option>
+                  <option value="dl" selected>DL-модель (LSTM / GRU)</option>
+                </select>
+              </div>
+              <div>
+                <label for="quick-threshold">Порог риска (0–1)</label>
+                <input id="quick-threshold" type="number" min="0" max="1" step="0.01" value="0.7">
+              </div>
+            </div>
+
+            <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn-primary" id="quick-analyze-btn">
+                ▶ Проанализировать сообщение
+              </button>
+              <button class="btn-ghost" id="quick-clear-btn">
+                Очистить текст
+              </button>
+            </div>
+          </div>
+
+          <!-- RIGHT: RESULTS -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Результаты анализа</div>
+                <div class="card-subtitle">Здесь отображаются вероятность и уровни риска</div>
+              </div>
+            </div>
+
+            <div class="results-block" id="quick-results">
+              <div class="muted">
+                Результаты пока не получены. Введите текст слева и нажмите
+                «Проанализировать сообщение».
+              </div>
+            </div>
+
+            <div style="margin-top:12px; display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+              <button class="btn-secondary" id="quick-save-history-btn" disabled>
+                💾 Сохранить результат в историю
+              </button>
+              <span class="muted">
+                *Подробная доработка логики сохранения планируется в ВКР.
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: BATCH ANALYSIS -->
+      <section id="section-batch" class="section">
+        <h1 class="section-title">Пакетный анализ сообщений</h1>
+        <p class="section-subtitle">
+          Загрузите файл с набором сообщений (CSV/XLSX), выполните пакетный анализ и получите
+          сводку по уровням риска.
+        </p>
+
+        <div class="layout-two-column">
+          <!-- LEFT: FORM -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Загрузка данных</div>
+                <div class="card-subtitle">Файл с текстами сообщений (например, выгрузка из системы)</div>
+              </div>
+            </div>
+
+            <label for="batch-file">Файл с сообщениями</label>
+            <input type="file" id="batch-file" accept=".csv,.xlsx,.xls">
+
+            <div class="field-row" style="margin-top:12px;">
+              <div>
+                <label for="batch-column">Столбец с текстом сообщений</label>
+                <select id="batch-column">
+                  <option value="">— будет доступен после анализа файла (демо) —</option>
+                  <option value="comment_text">comment_text</option>
+                  <option value="text">text</option>
+                </select>
+              </div>
+              <div>
+                <label for="batch-model">Модель анализа</label>
+                <select id="batch-model">
+                  <option value="ml">Базовая ML-модель</option>
+                  <option value="dl" selected>DL-модель (LSTM / GRU)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="checkbox-row">
+              <label>
+                <input type="checkbox" id="batch-save-history" checked>
+                Сохранить результаты в историю анализов
+              </label>
+              <label>
+                <input type="checkbox" id="batch-generate-report" checked>
+                Сформировать сводный отчёт
+              </label>
+            </div>
+
+            <div style="margin-top:14px;">
+              <button class="btn-primary" id="batch-start-btn">
+                ▶ Запустить пакетный анализ
+              </button>
+              <button class="btn-ghost" id="batch-reset-btn">
+                Сбросить форму
+              </button>
+            </div>
+
+            <div style="margin-top:14px;">
+              <label>Статус выполнения</label>
+              <div class="progress-bar">
+                <div class="progress-bar-inner" id="batch-progress-bar"></div>
+              </div>
+              <div class="muted" id="batch-progress-text" style="margin-top:4px;">
+                Анализ ещё не запускался.
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: SUMMARY -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Сводка по последнему анализу</div>
+                <div class="card-subtitle">Краткий результат пакетной проверки</div>
+              </div>
+            </div>
+
+            <div class="results-block" id="batch-summary">
+              <div class="muted">
+                После завершения пакетного анализа здесь появится краткая сводка:
+                количество сообщений, распределение по уровням риска и ссылка на подробный отчёт.
+              </div>
+            </div>
+
+            <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn-secondary" id="batch-open-report-btn" disabled>
+                📄 Открыть подробный отчёт
+              </button>
+              <button class="btn-ghost" id="batch-go-history-btn">
+                Перейти к истории анализов
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: HISTORY -->
+      <section id="section-history" class="section">
+        <h1 class="section-title">История анализов и отчёты</h1>
+        <p class="section-subtitle">
+          Просмотр ранее выполненных анализов, фильтрация по дате, типу анализа и модели.
+        </p>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Фильтры</div>
+              <div class="card-subtitle">Выберите период и параметры для поиска нужного анализа</div>
+            </div>
+          </div>
+
+          <div class="filters-row">
+            <div>
+              <label for="history-from">Дата от</label>
+              <input type="text" id="history-from" placeholder="напр. 01.03.2025">
+            </div>
+            <div>
+              <label for="history-to">Дата до</label>
+              <input type="text" id="history-to" placeholder="напр. 31.03.2025">
+            </div>
+            <div>
+              <label for="history-type">Тип анализа</label>
+              <select id="history-type">
+                <option value="">Все</option>
+                <option value="single">Быстрый анализ</option>
+                <option value="batch">Пакетный анализ</option>
+              </select>
+            </div>
+            <div>
+              <label for="history-model">Модель</label>
+              <select id="history-model">
+                <option value="">Все</option>
+                <option value="ml">Базовая ML-модель</option>
+                <option value="dl">DL-модель</option>
+              </select>
+            </div>
+            <div>
+              <button class="btn-secondary" id="history-apply-filters-btn">
+                Применить фильтр
+              </button>
+            </div>
+          </div>
+
+          <div style="margin-top:10px; overflow-x:auto;">
+            <table id="history-table">
+              <thead>
+              <tr>
+                <th>№</th>
+                <th>Дата/время</th>
+                <th>Тип анализа</th>
+                <th>Модель</th>
+                <th>Сообщений</th>
+                <th>Доля конфликтных</th>
+              </tr>
+              </thead>
+              <tbody>
+              <!-- Демонстрационные строки; в реальной системе здесь будет заполнение с backend -->
+              </tbody>
+            </table>
+          </div>
+
+          <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn-primary" id="history-open-report-btn" disabled>
+              📄 Открыть подробный отчёт
+            </button>
+            <button class="btn-ghost" id="history-export-btn">
+              ⬇ Экспортировать список в CSV
+            </button>
+          </div>
+        </div>
+
+        <div style="height:14px;"></div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Краткая информация о выбранном анализе</div>
+              <div class="card-subtitle">Сводка по запуску и быстрый доступ к отчёту</div>
+            </div>
+          </div>
+
+          <div class="results-block" id="history-details">
+            <div class="muted">
+              Выберите строку в таблице выше, чтобы увидеть краткую сводку и действия.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: TRAIN (for future VKR extension) -->
+      <section id="section-train" class="section">
+        <h1 class="section-title">Обучение и переобучение модели* </h1>
+        <p class="section-subtitle">
+          Черновой прототип экрана для дальнейшей доработки в рамках выпускной квалификационной работы.
+        </p>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Параметры обучения модели</div>
+              <div class="card-subtitle">Выбор датасета, типа модели и гиперпараметров</div>
+            </div>
+            <span class="pill pill-risk-medium">Планируется доработка в ВКР</span>
+          </div>
+
+          <div class="field-row">
+            <div>
+              <label for="train-dataset">Источник данных</label>
+              <select id="train-dataset">
+                <option value="jigsaw">Открытый датасет токсичных комментариев (Jigsaw)</option>
+                <option value="custom">Собственный датасет (будущий этап)</option>
+              </select>
+            </div>
+            <div>
+              <label for="train-model-type">Тип модели</label>
+              <select id="train-model-type">
+                <option value="ml">Базовая ML-модель</option>
+                <option value="dl" selected>DL-модель (LSTM / GRU)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div>
+              <label for="train-epochs">Количество эпох</label>
+              <input type="number" id="train-epochs" min="1" max="100" value="10">
+            </div>
+            <div>
+              <label for="train-batch-size">Размер батча</label>
+              <input type="number" id="train-batch-size" min="8" max="512" value="64">
+            </div>
+          </div>
+
+          <div style="margin-top:12px;">
+            <button class="btn-primary" id="train-start-btn" disabled>
+              ▶ Запустить обучение (макет)
+            </button>
+            <span class="muted" style="margin-left:8px;">
+              *Реальная логика обучения будет реализована в процессе выполнения ВКР.
+            </span>
+          </div>
+        </div>
+
+        <div style="height:14px;"></div>
+
+      </section>
+
+    </div>
+  </main>
+
+  <footer>
+    Прототип интерфейса системы прогнозирования конфликтных ситуаций. Логика работы
+    с моделями и данными будет доработана в ходе выполнения выпускной квалификационной работы.
+  </footer>
+</div>
+
+<script>
+  // =========================
+  // НАВИГАЦИЯ МЕЖДУ ЭКРАНАМИ
+  // =========================
+  const navButtons = document.querySelectorAll('.nav-btn');
+  const sections = {
+    quick: document.getElementById('section-quick'),
+    batch: document.getElementById('section-batch'),
+    history: document.getElementById('section-history'),
+    train: document.getElementById('section-train')
+  };
+
+  navButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.getAttribute('data-section');
+      navButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      Object.values(sections).forEach(sec => sec.classList.remove('active'));
+      if (sections[target]) {
+        sections[target].classList.add('active');
+      }
+    });
+  });
+
+  // =========================
+  // ДЕМО-ЛОГИКА БЫСТРОГО АНАЛИЗА
+  // (имитация, вместо реального backend)
+  // =========================
+  const quickAnalyzeBtn = document.getElementById('quick-analyze-btn');
+  const quickClearBtn = document.getElementById('quick-clear-btn');
+  const quickTextEl = document.getElementById('quick-text');
+  const quickModelEl = document.getElementById('quick-model');
+  const quickThresholdEl = document.getElementById('quick-threshold');
+  const quickResultsEl = document.getElementById('quick-results');
+  const quickSaveHistoryBtn = document.getElementById('quick-save-history-btn');
+
+  quickAnalyzeBtn.addEventListener('click', async () => {
+  const text = quickTextEl.value.trim();
+  if (!text) {
+    quickResultsEl.innerHTML = '<span class="muted">Введите текст для анализа.</span>';
+    quickSaveHistoryBtn.disabled = true;
+    return;
+  }
+
+  const model = quickModelEl.value; // сейчас backend использует только ML, но поле можно оставить
+  const threshold = parseFloat(quickThresholdEl.value) || 0.7;
+
+  quickResultsEl.innerHTML = '<span class="muted">Выполняется анализ...</span>';
+  quickSaveHistoryBtn.disabled = true;
+
+  try {
+    const resp = await fetch('/api/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, threshold }) // model можно не отправлять, сервис сейчас всегда "ml"
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      quickResultsEl.innerHTML = `<span class="muted">Ошибка API: ${resp.status} ${resp.statusText}</span>`;
+      console.error('API error:', errText);
+      return;
+    }
+
+    const data = await resp.json();
+    console.log('API response:', data);
+
+    const score = data.conflict_score ?? 0;
+    const riskLevel = data.risk_level || 'low';
+    const labels = data.labels || {};
+    const usedModel = data.model || 'ml';
+    const usedThreshold = data.threshold ?? threshold;
+
+    let riskLabelRu = 'Низкий риск';
+    let pillClass = 'pill-risk-low';
+    if (riskLevel === 'medium') {
+      riskLabelRu = 'Средний риск';
+      pillClass = 'pill-risk-medium';
+    } else if (riskLevel === 'high') {
+      riskLabelRu = 'Высокий риск';
+      pillClass = 'pill-risk-high';
+    }
+
+    // аккуратно достаём вероятности по основным меткам
+    const toxic = (labels.toxic ?? 0).toFixed(3);
+    const insult = (labels.insult ?? 0).toFixed(3);
+    const threat = (labels.threat ?? 0).toFixed(3);
+    const obscene = (labels.obscene ?? 0).toFixed(3);
+    const hate = (labels.identity_hate ?? 0).toFixed(3);
+    const severe = (labels.severe_toxic ?? 0).toFixed(3);
+
+    const modelLabel = usedModel === 'ml'
+      ? 'Базовая ML-модель (TF-IDF + LogisticRegression)'
+      : 'DL-модель (прототип)';
+
+    quickResultsEl.innerHTML = `
+      <div class="results-header">
+        <div>
+          <strong>Вероятность конфликтной ситуации:</strong>
+          <span style="font-weight:600;">${score.toFixed(3)}</span>
+          <span class="pill ${pillClass}">${riskLabelRu}</span>
+        </div>
+        <span class="pill pill-model">${modelLabel}</span>
+      </div>
+      <div style="margin-bottom:8px;">
+        <span class="muted">Порог риска: ${Number(usedThreshold).toFixed(2)}</span>
+      </div>
+      <div style="margin-bottom:8px;">
+        <strong>Детализация по типам токсичности:</strong><br>
+        • Общая токсичность (toxic): ${toxic}<br>
+        • Сильная токсичность (severe_toxic): ${severe}<br>
+        • Оскорбления (insult): ${insult}<br>
+        • Ненормативная лексика (obscene): ${obscene}<br>
+        • Угрозы (threat): ${threat}<br>
+        • Ненавистнические высказывания (identity_hate): ${hate}
+      </div>
+      <div class="muted">
+        Интерпретация: при выбранном пороге риск ситуации оценивается как «${riskLabelRu.toLowerCase()}».
+        Значения рассчитаны обученной baseline-моделью на основе открытого датасета Jigsaw.
+      </div>
+    `;
+
+    quickSaveHistoryBtn.disabled = false;
+  } catch (err) {
+    console.error(err);
+    quickResultsEl.innerHTML = '<span class="muted">Произошла ошибка при обращении к API. ' +
+      'Проверьте, запущен ли backend (Flask-приложение).</span>';
+    quickSaveHistoryBtn.disabled = true;
+  }
+});
+
+  quickClearBtn.addEventListener('click', () => {
+    quickTextEl.value = '';
+    quickResultsEl.innerHTML = '<div class="muted">Результаты пока не получены. ' +
+      'Введите текст слева и нажмите «Проанализировать сообщение».</div>';
+    quickSaveHistoryBtn.disabled = true;
+  });
+
+  // =========================
+  // ДЕМО-ЛОГИКА ПАКЕТНОГО АНАЛИЗА
+  // =========================
+  const batchStartBtn = document.getElementById('batch-start-btn');
+  const batchResetBtn = document.getElementById('batch-reset-btn');
+  const batchProgressBar = document.getElementById('batch-progress-bar');
+  const batchProgressText = document.getElementById('batch-progress-text');
+  const batchSummaryEl = document.getElementById('batch-summary');
+  const batchOpenReportBtn = document.getElementById('batch-open-report-btn');
+  const batchGoHistoryBtn = document.getElementById('batch-go-history-btn');
+
+  let batchFakeInterval = null;
+
+  batchStartBtn.addEventListener('click', () => {
+    if (batchFakeInterval) {
+      clearInterval(batchFakeInterval);
+    }
+
+    batchOpenReportBtn.disabled = true;
+    let progress = 0;
+    batchProgressBar.style.width = '0%';
+    batchProgressText.textContent = 'Выполняется анализ пакета сообщений...';
+
+    batchFakeInterval = setInterval(() => {
+      progress += Math.random() * 20;
+      if (progress >= 100) {
+        progress = 100;
+        clearInterval(batchFakeInterval);
+        batchProgressText.textContent = 'Пакетный анализ завершён (демо).';
+        batchOpenReportBtn.disabled = false;
+
+        // Демонстрационная сводка
+        const total = 10000;
+        const hi = 1250;
+        const mid = 2500;
+        const low = total - hi - mid;
+
+        batchSummaryEl.innerHTML = `
+          <div><strong>Сводка по последнему анализу (демо):</strong></div>
+          <div style="margin-top:6px;">
+            Всего сообщений: <strong>${total}</strong><br>
+            Конфликтные (высокий риск): <strong>${hi}</strong> (${(hi / total * 100).toFixed(1)}%)<br>
+            Средний риск: <strong>${mid}</strong> (${(mid / total * 100).toFixed(1)}%)<br>
+            Низкий риск: <strong>${low}</strong> (${(low / total * 100).toFixed(1)}%)
+          </div>
+          <div class="muted" style="margin-top:6px;">
+            Для демонстрации использованы условные данные. В реальной системе сводка формируется
+            по результатам анализа загруженного файла.
+          </div>
+        `;
+      }
+      batchProgressBar.style.width = progress + '%';
+      if (progress < 100) {
+        batchProgressText.textContent = `Выполняется анализ пакета сообщений... ${progress.toFixed(0)}%`;
+      }
+    }, 500);
+  });
+
+  batchResetBtn.addEventListener('click', () => {
+    if (batchFakeInterval) {
+      clearInterval(batchFakeInterval);
+    }
+    batchProgressBar.style.width = '0%';
+    batchProgressText.textContent = 'Анализ ещё не запускался.';
+    batchSummaryEl.innerHTML = `
+      <div class="muted">
+        После завершения пакетного анализа здесь появится краткая сводка:
+        количество сообщений, распределение по уровням риска и ссылка на подробный отчёт.
+      </div>
+    `;
+    batchOpenReportBtn.disabled = true;
+  });
+
+  batchGoHistoryBtn.addEventListener('click', () => {
+    document.querySelector('.nav-btn[data-section="history"]').click();
+  });
+
+  // =========================
+  // ДЕМО-ИСТОРИЯ
+  // =========================
+  const historyTableBody = document.querySelector('#history-table tbody');
+  const historyDetailsEl = document.getElementById('history-details');
+  const historyOpenReportBtn = document.getElementById('history-open-report-btn');
+
+  const demoHistoryData = [
+    { id: 1, datetime: '15.03.2025 14:32', type: 'Быстрый анализ', model: 'DL (LSTM)', count: 1, conflict: 'Высокий риск' },
+    { id: 2, datetime: '15.03.2025 13:05', type: 'Пакетный анализ', model: 'ML (GBM)', count: 10000, conflict: '12,5 %' },
+    { id: 3, datetime: '10.03.2025 19:20', type: 'Пакетный анализ', model: 'DL (LSTM)', count: 5000, conflict: '9,3 %' },
+    { id: 4, datetime: '05.03.2025 09:10', type: 'Быстрый анализ', model: 'ML (LR)', count: 1, conflict: 'Низкий риск' }
+  ];
+
+  function renderHistory() {
+    historyTableBody.innerHTML = '';
+    demoHistoryData.forEach(row => {
+      const tr = document.createElement('tr');
+      tr.dataset.id = String(row.id);
+      tr.innerHTML = `
+        <td>${row.id}</td>
+        <td>${row.datetime}</td>
+        <td>${row.type}</td>
+        <td>${row.model}</td>
+        <td>${row.count}</td>
+        <td>${row.conflict}</td>
+      `;
+      historyTableBody.appendChild(tr);
+    });
+  }
+
+  renderHistory();
+
+  let selectedHistoryId = null;
+
+  historyTableBody.addEventListener('click', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const id = parseInt(tr.dataset.id, 10);
+    selectedHistoryId = id;
+    historyOpenReportBtn.disabled = false;
+
+    [...historyTableBody.querySelectorAll('tr')].forEach(r => r.style.background = '');
+    tr.style.background = '#f1f3ff';
+
+    const row = demoHistoryData.find(r => r.id === id);
+    if (row) {
+      historyDetailsEl.innerHTML = `
+        <div><strong>Выбранный анализ №${row.id} от ${row.datetime}</strong></div>
+        <div style="margin-top:6px;">
+          Тип анализа: <strong>${row.type}</strong><br>
+          Модель: <strong>${row.model}</strong><br>
+          Сообщений: <strong>${row.count}</strong><br>
+          Доля конфликтных / оценка риска: <strong>${row.conflict}</strong>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn-secondary">
+            Показать топ-10 самых конфликтных сообщений
+          </button>
+          <button class="btn-ghost">
+            Открыть полный отчёт (макет)
+          </button>
+        </div>
+        <div class="muted" style="margin-top:6px;">
+          В реальной системе при нажатии на кнопки будут открываться детальные отчёты
+          по результатам сохранённых анализов.
+        </div>
+      `;
+    }
+  });
+
+  historyOpenReportBtn.addEventListener('click', () => {
+    if (!selectedHistoryId) return;
+    alert('В прототипе открытие отчёта реализовано как заглушка.\n' +
+      'В реальной системе здесь будет переход на страницу подробного отчёта.');
+  });
+
+  // Фильтры в истории сейчас не меняют данные — оставляем как UI-макет.
+</script>
+</body>
+</html>
