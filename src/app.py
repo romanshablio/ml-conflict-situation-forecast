@@ -34,7 +34,7 @@ def api_predict():
 
     try:
         # Больше НЕ передаём model_type, сервис всегда использует ML-модель
-        result = service.predict_single(text)
+        result = service.predict_single_as_dict(text, threshold=threshold)
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 500
 

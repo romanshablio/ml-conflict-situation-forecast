@@ -1,61 +1,69 @@
+from typing import Tuple, List, Dict
+
 import pandas as pd
-import numpy as np
 from sklearn.model_selection import train_test_split
 
-from .config import DATA_PATH, RANDOM_STATE
+from .config import RU_2CH_PIKABU_PATH, RU_OK_DATA_PATH
 
-# Метки токсичности из датасета Jigsaw
-TOXIC_LABELS = [
-    "toxic",
-    "severe_toxic",
-    "obscene",
-    "threat",
-    "insult",
-    "identity_hate",
-]
+# теперь у нас один бинарный признак токсичности
+TOXIC_LABELS: List[str] = ["toxic"]
 
 
-def load_raw_data(path: str = DATA_PATH) -> pd.DataFrame:
+def load_russian_toxic_data(
+    test_size: float = 0.2,
+    random_state: int = 42,
+) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
     """
-    Загружаем датасет Jigsaw из локального файла train.csv.
-    Файл предварительно скачивается через браузер и
-    сохраняется в папку data/ проекта.
+    Загружает и объединяет два русскоязычных датасета токсичности:
+    - Russian Language Toxic Comments (2ch + Pikabu) [CSV]
+    - Toxic Russian Comments from ok.ru [TXT, fastText-формат]
+
+    Возвращает train/test разбиение:
+    X_train, X_test, y_train, y_test
     """
-    df = pd.read_csv(path)
-    cols = ["comment_text"] + TOXIC_LABELS
-    df = df[cols].dropna(subset=["comment_text"])
-    return df
 
+    # 1. Russian Language Toxic Comments (2ch + Pikabu), Kaggle.
+    # Обычно там столбцы: "comment" и "toxic".
+    df1 = pd.read_csv(RU_2CH_PIKABU_PATH)
 
-def train_val_test_split(df: pd.DataFrame):
-    """
-    Разбиение данных на train/val/test для моделей машинного обучения.
+    # приводим к общей схеме: text, toxic
+    if "text" not in df1.columns:
+        if "comment" in df1.columns:
+            df1 = df1.rename(columns={"comment": "text"})
+    df1 = df1[["text", "toxic"]]
+    df1["toxic"] = df1["toxic"].astype(int)
 
-    Для baseline-модели достаточно train/test, но оставим и валидацию,
-    чтобы можно было при желании использовать и в других экспериментах.
-    """
-    X = df["comment_text"].astype(str).values
-    y = df[TOXIC_LABELS].values
+    # 2. Toxic Russian Comments from ok.ru (fastText-формат)
+    rows: List[Dict[str, object]] = []
+    with open(RU_OK_DATA_PATH, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                label_token, text = line.split(" ", 1)
+            except ValueError:
+                # строка без текста/метки — пропускаем
+                continue
 
-    # признак "есть хоть одна токсичная метка" используем для стратификации
-    stratify_labels = (y.sum(axis=1) > 0)
+            # fastText-метки: __label__NORMAL, __label__INSULT, __label__THREAT, __label__OBSCENITY
+            if label_token == "__label__NORMAL":
+                label = 0
+            else:
+                label = 1  # любое отклонение от нормы считаем токсичным
 
-    X_train_full, X_test, y_train_full, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.2,
-        random_state=RANDOM_STATE,
-        stratify=stratify_labels,
-    )
+            rows.append({"text": text, "toxic": label})
 
-    # Валидацию при желании можно не использовать в baseline,
-    # но вернем её "на будущее"
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_train_full,
-        y_train_full,
-        test_size=0.1,
-        random_state=RANDOM_STATE,
-        stratify=(y_train_full.sum(axis=1) > 0),
-    )
+    df2 = pd.DataFrame(rows)
 
-    return X_train, X_val, X_test, y_train, y_val, y_test
+    # 3. Объединяем
+    df = pd.concat([df1, df2], ignore_index=True)
+    df = df.dropna(subset=["text"])
+    df["text"] = df["text"].astype(str).str.strip()
+    df["toxic"] = df["toxic"].astype(int)
+
+    X = df["text"]
+    # для OneVsRestClassifier удобно иметь (n_samples, 1)
+    y = df["toxic"].values.reshape(-1, 1)
+
+    return train_test_split(X, y, test_size=test_size, random_state=random_state)

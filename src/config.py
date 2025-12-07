@@ -1,20 +1,16 @@
-import os
+from pathlib import Path
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Корневой каталог проекта
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-DATA_PATH = os.path.join(BASE_DIR, "data", "train.csv")
+# Папка с данными и моделями
+DATA_DIR = BASE_DIR / "data"
+MODELS_DIR = BASE_DIR / "models"
 
-MODELS_DIR = os.path.join(BASE_DIR, "models")
-TOKENIZER_PATH = os.path.join(MODELS_DIR, "tokenizer.pkl")
-DL_MODEL_PATH = os.path.join(MODELS_DIR, "dl_model.h5")
-BASELINE_MODEL_PATH = os.path.join(MODELS_DIR, "baseline_model.pkl")
+# Пути к русскоязычным датасетам
+# Переименуй свои файлы в соответствии с этими именами
+RU_2CH_PIKABU_PATH = DATA_DIR / "ru_toxic_2ch_pikabu.csv"
+RU_OK_DATA_PATH = DATA_DIR / "ru_toxic_ok.txt"
 
-# Настройки DL-модели
-MAX_NUM_WORDS = 30000
-MAX_SEQUENCE_LENGTH = 200
-EMBEDDING_DIM = 128
-BATCH_SIZE = 64
-EPOCHS = 5  # потом можно увеличить
-TEST_SIZE = 0.15
-VAL_SIZE = 0.15
-RANDOM_STATE = 42
+# Путь для сохранения baseline-модели
+BASELINE_MODEL_PATH = MODELS_DIR / "baseline_model.pkl"
