@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Any
 
 import joblib
 import numpy as np
 
-from .config import BASELINE_MODEL_PATH
+from .baseline_model import train_baseline_model
+from .config import BASELINE_MODEL_PATH, RU_2CH_PIKABU_PATH, RU_OK_DATA_PATH
 from .data_utils import TOXIC_LABELS
 
 
@@ -41,24 +43,64 @@ class ConflictPredictionService:
         self,
         model_path=BASELINE_MODEL_PATH,
         base_threshold: float = 0.7,
+        auto_train: bool = True,
     ) -> None:
-        self.model_path = model_path
+        self.model_path = Path(model_path)
         self.base_threshold = base_threshold
+        self.auto_train = auto_train
         self.model = None
 
-        self._load_model()
+        self._ensure_model_loaded()
 
-    def _load_model(self) -> None:
+    def _datasets_available(self) -> bool:
+        return RU_2CH_PIKABU_PATH.exists() and RU_OK_DATA_PATH.exists()
+
+    def _load_model(self) -> bool:
         """
-        Загружаем обученную baseline-модель, если файл существует.
+        Пытаемся загрузить обученную baseline-модель, если файл существует.
         """
         try:
             print(f"[Service] Загружаем baseline-модель из {self.model_path} ...")
             self.model = joblib.load(self.model_path)
+            return True
         except FileNotFoundError:
-            print(f"[Service] ВНИМАНИЕ: файл модели {self.model_path} не найден. "
-                  f"Сначала обучите модель командой: python -m src.baseline_model")
+            print(
+                f"[Service] ВНИМАНИЕ: файл модели {self.model_path} не найден."
+            )
             self.model = None
+            return False
+        except Exception as exc:  # noqa: BLE001
+            print(f"[Service] Ошибка при загрузке модели: {exc}")
+            self.model = None
+            return False
+
+    def _ensure_model_loaded(self) -> None:
+        """
+        Если модель отсутствует, по возможности обучаем её на локальных датасетах
+        и только потом загружаем. Это позволяет сразу получать реальные предсказания
+        без отдельного шага обучения.
+        """
+        if self._load_model():
+            return
+
+        if not self.auto_train:
+            print("[Service] Автообучение отключено, модель не загружена.")
+            return
+
+        if not self._datasets_available():
+            raise RuntimeError(
+                "Файл модели отсутствует, а датасеты не найдены. "
+                "Проверьте, что в каталоге data/ есть ru_toxic_2ch_pikabu.csv "
+                "и ru_toxic_ok.txt или обучите модель вручную."
+            )
+
+        print("[Service] Автоматически обучаем baseline-модель на датасетах...")
+        train_baseline_model()
+        if not self._load_model():
+            raise RuntimeError(
+                "Не удалось загрузить baseline-модель после обучения. "
+                "Проверьте логи обучения и состав датасетов."
+            )
 
     def is_ready(self) -> bool:
         """
@@ -72,7 +114,7 @@ class ConflictPredictionService:
         threshold: Optional[float] = None,
     ) -> PredictionResult:
         """
-                Возвращает:
+        Возвращает:
         - вероятность конфликтности (conflict_score)
         - уровень риска (risk_level)
         - словарь labels с вероятностями по типам токсичности:
