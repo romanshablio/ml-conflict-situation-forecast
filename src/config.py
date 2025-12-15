@@ -6,6 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Папка с данными и моделями
 DATA_DIR = BASE_DIR / "data"
 MODELS_DIR = BASE_DIR / "models"
+REPORTS_DIR = DATA_DIR / "reports"
 
 # Пути к русскоязычным датасетам
 # Переименуй свои файлы в соответствии с этими именами

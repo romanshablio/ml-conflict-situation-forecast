@@ -595,8 +595,8 @@
               </div>
             </div>
 
-            <label for="batch-file">Файл с сообщениями</label>
-            <input type="file" id="batch-file" accept=".csv,.xlsx,.xls">
+            <label for="batch-file">Файл с сообщениями (CSV или TXT, одна строка = одно сообщение)</label>
+            <input type="file" id="batch-file" accept=".csv,.txt">
 
             <div class="field-row" style="margin-top:12px;">
               <div>
@@ -608,11 +608,8 @@
                 </select>
               </div>
               <div>
-                <label for="batch-model">Модель анализа</label>
-                <select id="batch-model">
-                  <option value="ml">Базовая ML-модель</option>
-                  <option value="dl" selected>DL-модель (LSTM / GRU)</option>
-                </select>
+                <label for="batch-threshold">Порог риска (0–1)</label>
+                <input type="number" id="batch-threshold" min="0" max="1" step="0.01" value="0.7">
               </div>
             </div>
 
@@ -974,7 +971,7 @@
   });
 
   // =========================
-  // ДЕМО-ЛОГИКА ПАКЕТНОГО АНАЛИЗА
+  // ЛОГИКА ПАКЕТНОГО АНАЛИЗА
   // =========================
   const batchStartBtn = document.getElementById('batch-start-btn');
   const batchResetBtn = document.getElementById('batch-reset-btn');
@@ -983,58 +980,74 @@
   const batchSummaryEl = document.getElementById('batch-summary');
   const batchOpenReportBtn = document.getElementById('batch-open-report-btn');
   const batchGoHistoryBtn = document.getElementById('batch-go-history-btn');
+  const batchFileInput = document.getElementById('batch-file');
+  const batchThresholdInput = document.getElementById('batch-threshold');
 
-  let batchFakeInterval = null;
-
-  batchStartBtn.addEventListener('click', () => {
-    if (batchFakeInterval) {
-      clearInterval(batchFakeInterval);
+  batchStartBtn.addEventListener('click', async () => {
+    const file = batchFileInput.files[0];
+    if (!file) {
+      batchSummaryEl.innerHTML = '<span class="muted">Пожалуйста, выберите файл (CSV или TXT).</span>';
+      return;
     }
 
+    const threshold = parseFloat(batchThresholdInput.value) || 0.7;
+
     batchOpenReportBtn.disabled = true;
-    let progress = 0;
     batchProgressBar.style.width = '0%';
     batchProgressText.textContent = 'Выполняется анализ пакета сообщений...';
+    batchSummaryEl.innerHTML = '<span class="muted">Файл загружен, выполняется анализ...</span>';
 
-    batchFakeInterval = setInterval(() => {
-      progress += Math.random() * 20;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(batchFakeInterval);
-        batchProgressText.textContent = 'Пакетный анализ завершён (демо).';
-        batchOpenReportBtn.disabled = false;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('threshold', threshold);
 
-        // Демонстрационная сводка
-        const total = 10000;
-        const hi = 1250;
-        const mid = 2500;
-        const low = total - hi - mid;
+    try {
+      const resp = await fetch('/api/batch_predict_file', {
+        method: 'POST',
+        body: formData,
+      });
 
-        batchSummaryEl.innerHTML = `
-          <div><strong>Сводка по последнему анализу (демо):</strong></div>
-          <div style="margin-top:6px;">
-            Всего сообщений: <strong>${total}</strong><br>
-            Конфликтные (высокий риск): <strong>${hi}</strong> (${(hi / total * 100).toFixed(1)}%)<br>
-            Средний риск: <strong>${mid}</strong> (${(mid / total * 100).toFixed(1)}%)<br>
-            Низкий риск: <strong>${low}</strong> (${(low / total * 100).toFixed(1)}%)
-          </div>
-          <div class="muted" style="margin-top:6px;">
-            Для демонстрации использованы условные данные. В реальной системе сводка формируется
-            по результатам анализа загруженного файла.
-          </div>
-        `;
+      if (!resp.ok) {
+        const errText = await resp.text();
+        batchProgressText.textContent = `Ошибка API: ${resp.status}`;
+        batchSummaryEl.innerHTML = `<span class="muted">Не удалось выполнить пакетный анализ. ${errText}</span>`;
+        batchProgressBar.style.width = '0%';
+        return;
       }
-      batchProgressBar.style.width = progress + '%';
-      if (progress < 100) {
-        batchProgressText.textContent = `Выполняется анализ пакета сообщений... ${progress.toFixed(0)}%`;
-      }
-    }, 500);
+
+      const data = await resp.json();
+      const { count, risk_distribution: dist = {}, threshold: usedThreshold } = data;
+      const low = dist.low || 0;
+      const medium = dist.medium || 0;
+      const high = dist.high || 0;
+
+      batchProgressBar.style.width = '100%';
+      batchProgressText.textContent = 'Пакетный анализ завершён.';
+      batchOpenReportBtn.disabled = false;
+
+      batchSummaryEl.innerHTML = `
+        <div style="margin-bottom:6px;">
+          Обработано сообщений: <strong>${count}</strong><br>
+          Порог риска: <strong>${Number(usedThreshold ?? threshold).toFixed(2)}</strong>
+        </div>
+        <div class="progress-badges">
+          <span class="pill pill-risk-low">Низкий: ${low}</span>
+          <span class="pill pill-risk-medium">Средний: ${medium}</span>
+          <span class="pill pill-risk-high">Высокий: ${high}</span>
+        </div>
+        <div style="margin-top:8px;" class="muted">
+          Расчёты выполнены обученной baseline-моделью. Скачивание подробного отчёта появится позже.
+        </div>
+      `;
+    } catch (err) {
+      console.error(err);
+      batchProgressText.textContent = 'Ошибка при выполнении анализа.';
+      batchSummaryEl.innerHTML = '<span class="muted">Произошла ошибка при обращении к API. Проверьте, запущен ли backend.</span>';
+      batchProgressBar.style.width = '0%';
+    }
   });
 
   batchResetBtn.addEventListener('click', () => {
-    if (batchFakeInterval) {
-      clearInterval(batchFakeInterval);
-    }
     batchProgressBar.style.width = '0%';
     batchProgressText.textContent = 'Анализ ещё не запускался.';
     batchSummaryEl.innerHTML = `
