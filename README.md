@@ -115,6 +115,10 @@ ml-conflict-situation-forecast/
 
 6. **Запустите веб‑приложение**
 
+  ```bash
+   (venv) python main.py
+   ```
+или
    ```bash
    (venv) python -m src.app
    ```
