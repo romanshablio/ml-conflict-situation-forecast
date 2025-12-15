@@ -55,6 +55,7 @@ def _save_report(report_data):
         "threshold": report_data["threshold"],
         "count": report_data["count"],
         "risk_distribution": report_data.get("risk_distribution", {}),
+        "type": report_data.get("type", "batch"),
     }
     history.insert(0, summary)
     # ограничим историю, чтобы не раздувать файл
@@ -274,6 +275,7 @@ def api_batch_predict_file():
         "count": len(enriched),
         "risk_distribution": risk_counts,
         "results": enriched,
+        "type": "batch",
     }
     _save_report(report_data)
 
@@ -333,6 +335,7 @@ def get_report(report_id):
         <h2>Отчёт по пакетному анализу</h2>
         <div>Идентификатор: <code>{report_id}</code></div>
         <div>Создан: {report.get("created_at","")}</div>
+        <div>Тип анализа: {report.get("type","batch")}</div>
         <div>Сообщений: {report.get("count",0)}</div>
         <div>Порог риска: {report.get("threshold",0.7)}</div>
         <h3>Распределение по рискам</h3>
@@ -418,6 +421,58 @@ def api_train_model():
             "text_column": text_col,
             "label_column": label_col,
             "model_path": str(BASELINE_MODEL_PATH),
+        }
+    )
+
+
+@app.route("/api/save_quick", methods=["POST"])
+def api_save_quick():
+    """
+    Сохраняет результат быстрого анализа как отдельный отчёт (1 сообщение).
+    Ожидает JSON: { "text": "...", "threshold": 0.7 }
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    text = data.get("text", "")
+    threshold = float(data.get("threshold", 0.7))
+
+    if not text or not text.strip():
+        return jsonify({"error": "Текст сообщения не должен быть пустым"}), 400
+
+    try:
+        result = service.predict_single(text, threshold=threshold)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+
+    risk_counts = {"low": 0, "medium": 0, "high": 0}
+    risk_counts[result.risk_level] = 1
+
+    now = datetime.utcnow().isoformat() + "Z"
+    report_id = now.replace(":", "").replace("-", "").replace(".", "")
+    report_data = {
+        "id": report_id,
+        "created_at": now,
+        "threshold": threshold,
+        "count": 1,
+        "risk_distribution": risk_counts,
+        "results": [
+            {
+                "text": result.text,
+                "model": "ml",
+                "conflict_score": result.conflict_score,
+                "risk_level": result.risk_level,
+                "labels": result.labels,
+            }
+        ],
+        "type": "quick",
+    }
+    _save_report(report_data)
+
+    return jsonify(
+        {
+            "status": "saved",
+            "report_id": report_id,
+            "risk_level": result.risk_level,
+            "conflict_score": result.conflict_score,
         }
     )
 

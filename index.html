@@ -846,6 +846,8 @@
   const quickThresholdEl = document.getElementById('quick-threshold');
   const quickResultsEl = document.getElementById('quick-results');
   const quickSaveHistoryBtn = document.getElementById('quick-save-history-btn');
+  let lastQuickText = '';
+  let lastQuickThreshold = 0.7;
 
   quickAnalyzeBtn.addEventListener('click', async () => {
   const text = quickTextEl.value.trim();
@@ -857,6 +859,8 @@
 
   const model = quickModelEl.value; // сейчас backend использует только ML, но поле можно оставить
   const threshold = parseFloat(quickThresholdEl.value) || 0.7;
+  lastQuickText = text;
+  lastQuickThreshold = threshold;
 
   quickResultsEl.innerHTML = '<span class="muted">Выполняется анализ...</span>';
   quickSaveHistoryBtn.disabled = true;
@@ -947,6 +951,36 @@
     quickResultsEl.innerHTML = '<div class="muted">Результаты пока не получены. ' +
       'Введите текст слева и нажмите «Проанализировать сообщение».</div>';
     quickSaveHistoryBtn.disabled = true;
+    lastQuickText = '';
+    lastQuickThreshold = 0.7;
+  });
+
+  quickSaveHistoryBtn.addEventListener('click', async () => {
+    if (!lastQuickText) {
+      quickResultsEl.innerHTML += '<div class="muted" style="margin-top:6px;">Нет результата для сохранения.</div>';
+      return;
+    }
+    quickSaveHistoryBtn.disabled = true;
+    try {
+      const resp = await fetch('/api/save_quick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: lastQuickText, threshold: lastQuickThreshold }),
+      });
+      if (!resp.ok) {
+        const errText = await resp.text();
+        quickResultsEl.innerHTML += `<div class="muted" style="margin-top:6px;">Ошибка сохранения: ${errText}</div>`;
+        quickSaveHistoryBtn.disabled = false;
+        return;
+      }
+      const data = await resp.json();
+      quickResultsEl.innerHTML += '<div class="muted" style="margin-top:6px;">Результат сохранён в историю.</div>';
+      loadHistory();
+    } catch (err) {
+      console.error(err);
+      quickResultsEl.innerHTML += '<div class="muted" style="margin-top:6px;">Не удалось сохранить в историю.</div>';
+      quickSaveHistoryBtn.disabled = false;
+    }
   });
 
   // =========================
@@ -1082,10 +1116,11 @@
         const conflictShare = total ? `${((high / total) * 100).toFixed(1)} %` : '—';
         const tr = document.createElement('tr');
         tr.dataset.id = String(row.id);
+        const typeLabel = row.type === 'quick' ? 'Быстрый анализ' : 'Пакетный анализ';
         tr.innerHTML = `
           <td>${idx + 1}</td>
           <td>${row.created_at || ''}</td>
-          <td>Пакетный анализ</td>
+          <td>${typeLabel}</td>
           <td>Базовая ML</td>
           <td>${row.count || 0}</td>
           <td>${conflictShare}</td>
@@ -1110,10 +1145,11 @@
     [...historyTableBody.querySelectorAll('tr')].forEach(r => r.style.background = '');
     tr.style.background = '#f1f3ff';
 
+    const typeCell = tr.children[2]?.textContent || 'Анализ';
     historyDetailsEl.innerHTML = `
       <div><strong>Выбран отчёт ${id}</strong></div>
       <div style="margin-top:6px;" class="muted">
-        Нажмите «Открыть подробный отчёт», чтобы просмотреть детали.
+        Тип: ${typeCell}. Нажмите «Открыть подробный отчёт», чтобы просмотреть детали.
       </div>
     `;
   });
