@@ -480,7 +480,7 @@
         <img src="/static/img/logo.png" alt="Логотип">
         <div>
           <div class="logo-text-main">Прогноз конфликтных ситуаций</div>
-          <div class="logo-text-sub">Интеллектуальный анализ текстовых сообщений</div>
+          <div class="logo-text-sub">Интеллектуальный анализ конфликтных ситуаций</div>
         </div>
       </div>
 
@@ -488,7 +488,7 @@
         <button class="nav-btn active" data-section="quick">Быстрый анализ</button>
         <button class="nav-btn" data-section="batch">Пакетный анализ</button>
         <button class="nav-btn" data-section="history">История и отчёты</button>
-        <button class="nav-btn" data-section="train">Обучение модели*</button>
+        <button class="nav-btn" data-section="train">Обучение модели</button>
       </nav>
     </div>
   </header>
@@ -569,9 +569,7 @@
               <button class="btn-secondary" id="quick-save-history-btn" disabled>
                 💾 Сохранить результат в историю
               </button>
-              <span class="muted">
-                *Подробная доработка логики сохранения планируется в ВКР.
-              </span>
+             
             </div>
           </div>
         </div>
@@ -581,7 +579,7 @@
       <section id="section-batch" class="section">
         <h1 class="section-title">Пакетный анализ сообщений</h1>
         <p class="section-subtitle">
-          Загрузите файл с набором сообщений (CSV/XLSX), выполните пакетный анализ и получите
+          Загрузите файл с набором сообщений (CSV/TXT), выполните пакетный анализ и получите
           сводку по уровням риска.
         </p>
 
@@ -765,57 +763,39 @@
         </div>
       </section>
 
-      <!-- SECTION: TRAIN (for future VKR extension) -->
+      <!-- SECTION: TRAIN -->
       <section id="section-train" class="section">
-        <h1 class="section-title">Обучение и переобучение модели* </h1>
-        <p class="section-subtitle">
-          Черновой прототип экрана для дальнейшей доработки в рамках выпускной квалификационной работы.
-        </p>
+        <h1 class="section-title">Обучение и переобучение модели</h1>
+
 
         <div class="card">
           <div class="card-header">
             <div>
               <div class="card-title">Параметры обучения модели</div>
-              <div class="card-subtitle">Выбор датасета, типа модели и гиперпараметров</div>
-            </div>
-            <span class="pill pill-risk-medium">Планируется доработка в ВКР</span>
-          </div>
-
-          <div class="field-row">
-            <div>
-              <label for="train-dataset">Источник данных</label>
-              <select id="train-dataset">
-                <option value="ru_open">Открытые русскоязычные датасеты токсичных комментариев</option>
-                <option value="custom">Собственный датасет (будущий этап)</option>
-              </select>
-            </div>
-            <div>
-              <label for="train-model-type">Тип модели</label>
-              <select id="train-model-type">
-                <option value="ml">Базовая ML-модель</option>
-                <option value="dl" selected>DL-модель (LSTM / GRU)</option>
-              </select>
+              <div class="card-subtitle">Загрузите свой CSV с колонками текста и метки токсичности (text + toxic)</div>
             </div>
           </div>
 
-          <div class="field-row">
-            <div>
-              <label for="train-epochs">Количество эпох</label>
-              <input type="number" id="train-epochs" min="1" max="100" value="10">
-            </div>
-            <div>
-              <label for="train-batch-size">Размер батча</label>
-              <input type="number" id="train-batch-size" min="8" max="512" value="64">
-            </div>
+          <div>
+            <label for="train-file">Датасет (CSV, колонки text + toxic)</label>
+            <input type="file" id="train-file" accept=".csv">
+            <p class="field-hint">
+              Обязательные колонки: <code>text</code> (или comment/comment_text) и <code>toxic</code>/<code>label</code> (0/1).
+              Модель обучается локально (TF-IDF + LogisticRegression) и заменяет текущую.
+            </p>
           </div>
 
           <div style="margin-top:12px;">
-            <button class="btn-primary" id="train-start-btn" disabled>
-              ▶ Запустить обучение (макет)
+            <button class="btn-primary" id="train-start-btn">
+              ▶ Запустить обучение
             </button>
-            <span class="muted" style="margin-left:8px;">
-              *Реальная логика обучения будет реализована в процессе выполнения ВКР.
-            </span>
+            <button class="btn-ghost" id="train-reset-btn">
+              Сбросить форму
+            </button>
+          </div>
+
+          <div style="margin-top:12px;" id="train-status" class="muted">
+            Выберите файл и запустите обучение. Прогресс отображается здесь.
           </div>
         </div>
 
@@ -827,8 +807,7 @@
   </main>
 
   <footer>
-    Прототип интерфейса системы прогнозирования конфликтных ситуаций. Логика работы
-    с моделями и данными будет доработана в ходе выполнения выпускной квалификационной работы.
+    Система прогнозирования конфликтных ситуаций.
   </footer>
 </div>
 
@@ -1142,6 +1121,67 @@
   historyOpenReportBtn.addEventListener('click', () => {
     if (!selectedHistoryId) return;
     window.open(`/report/${selectedHistoryId}`, '_blank');
+  });
+
+  // =========================
+  // ОБУЧЕНИЕ
+  // =========================
+  const trainFileInput = document.getElementById('train-file');
+  const trainStartBtn = document.getElementById('train-start-btn');
+  const trainResetBtn = document.getElementById('train-reset-btn');
+  const trainStatusEl = document.getElementById('train-status');
+
+  trainStartBtn.addEventListener('click', async () => {
+    const file = trainFileInput.files[0];
+    if (!file) {
+      trainStatusEl.innerHTML = 'Выберите CSV-файл с колонками text и toxic (0/1).';
+      return;
+    }
+
+    trainStartBtn.disabled = true;
+    trainResetBtn.disabled = true;
+    trainStatusEl.innerHTML = 'Загружаем датасет и запускаем обучение...';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const resp = await fetch('/api/train_model', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        trainStatusEl.innerHTML = `Ошибка обучения: ${resp.status} ${errText}`;
+        trainStartBtn.disabled = false;
+        trainResetBtn.disabled = false;
+        return;
+      }
+
+      const data = await resp.json();
+      trainStatusEl.innerHTML = `
+        <div><strong>Обучение завершено успешно.</strong></div>
+        <div>Строк в датасете: ${data.trained_on}</div>
+        <div>Текстовая колонка: ${data.text_column}</div>
+        <div>Колонка метки: ${data.label_column}</div>
+        <div class="muted" style="margin-top:6px;">Модель обновлена и используется для новых прогнозов.</div>
+      `;
+
+      // после успешного обучения обновим историю, чтобы отобразились новые отчёты при следующих анализах
+      loadHistory();
+    } catch (err) {
+      console.error(err);
+      trainStatusEl.innerHTML = 'Произошла ошибка при обращении к API обучения.';
+    } finally {
+      trainStartBtn.disabled = false;
+      trainResetBtn.disabled = false;
+    }
+  });
+
+  trainResetBtn.addEventListener('click', () => {
+    trainFileInput.value = '';
+    trainStatusEl.innerHTML = 'Выберите файл и запустите обучение. Прогресс отображается здесь.';
   });
 
   // Фильтры в истории сейчас не меняют данные — оставляем как UI-макет.

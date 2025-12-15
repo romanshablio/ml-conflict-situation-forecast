@@ -4,9 +4,16 @@ import io
 import json
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory, Response
+import pandas as pd
+import joblib
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.pipeline import Pipeline
 
 from .model_service import ConflictPredictionService
-from .config import REPORTS_DIR, BASE_DIR as PROJECT_BASE_DIR
+from .config import REPORTS_DIR, BASE_DIR as PROJECT_BASE_DIR, CUSTOM_DATASET_PATH, BASELINE_MODEL_PATH
+from .data_utils import TOXIC_LABELS
 
 
 app = Flask(__name__)
@@ -55,6 +62,32 @@ def _save_report(report_data):
     _save_history(history)
 
     return report_path
+
+
+def _build_pipeline():
+    return Pipeline(
+        [
+            (
+                "tfidf",
+                TfidfVectorizer(
+                    max_features=100_000,
+                    ngram_range=(1, 2),
+                    lowercase=True,
+                ),
+            ),
+            (
+                "clf",
+                OneVsRestClassifier(
+                    LogisticRegression(
+                        solver="liblinear",
+                        max_iter=1000,
+                        n_jobs=12,
+                    )
+                ),
+            ),
+        ]
+    )
+
 
 @app.route("/")
 def index():
@@ -314,6 +347,79 @@ def get_report(report_id):
     </html>
     """
     return Response(html, mimetype="text/html")
+
+
+@app.route("/api/train_model", methods=["POST"])
+def api_train_model():
+    """
+    Обучает ML-модель на загруженном датасете.
+    Ожидается CSV-файл с колонкой текста (text/comment/comment_text/message/body)
+    и бинарной колонкой токсичности (toxic/label).
+    Сохраняет модель в models/baseline_model.pkl и обновляет сервис инференса.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "Не передан файл 'file'"}), 400
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "Имя файла пустое"}), 400
+
+    raw = file.read()
+    if not raw:
+        return jsonify({"error": "Файл пустой"}), 400
+    try:
+        text_data = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text_data = raw.decode("cp1251", errors="ignore")
+
+    try:
+        df = pd.read_csv(io.StringIO(text_data))
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Не удалось прочитать CSV: {exc}"}), 400
+
+    text_cols = [c for c in df.columns if c.lower() in {"text", "comment", "comment_text", "message", "body"}]
+    label_cols = [c for c in df.columns if c.lower() in {"toxic", "label"}]
+    if not text_cols or not label_cols:
+        return jsonify({"error": "Нужны колонки с текстом (text/comment/...) и меткой токсичности (toxic/label)"}), 400
+
+    text_col = text_cols[0]
+    label_col = label_cols[0]
+
+    df = df[[text_col, label_col]].dropna()
+    df[text_col] = df[text_col].astype(str).str.strip()
+    df = df[df[text_col] != ""]
+    df[label_col] = df[label_col].astype(int)
+
+    if df.empty:
+        return jsonify({"error": "После очистки данных не осталось строк"}), 400
+
+    # формируем мультилейбл-матрицу (если в датасете только toxic, остальное заполняем нулями)
+    y = pd.DataFrame()
+    y["toxic"] = df[label_col]
+    for lbl in TOXIC_LABELS:
+        if lbl not in y.columns:
+            y[lbl] = y["toxic"] if lbl == "toxic" else 0
+    y = y[TOXIC_LABELS]
+
+    X = df[text_col]
+
+    pipeline = _build_pipeline()
+    pipeline.fit(X, y)
+
+    # сохраняем датасет и модель
+    CUSTOM_DATASET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(CUSTOM_DATASET_PATH, index=False)
+    joblib.dump(pipeline, BASELINE_MODEL_PATH)
+    service.model = pipeline
+
+    return jsonify(
+        {
+            "status": "ok",
+            "trained_on": len(df),
+            "text_column": text_col,
+            "label_column": label_col,
+            "model_path": str(BASELINE_MODEL_PATH),
+        }
+    )
 
 
 if __name__ == "__main__":

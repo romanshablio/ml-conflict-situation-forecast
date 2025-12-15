@@ -7,6 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 MODELS_DIR = BASE_DIR / "models"
 REPORTS_DIR = DATA_DIR / "reports"
+CUSTOM_DATASET_PATH = DATA_DIR / "custom_dataset.csv"
 
 # Пути к русскоязычным датасетам
 # Переименуй свои файлы в соответствии с этими именами
