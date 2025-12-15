@@ -982,6 +982,7 @@
   const batchGoHistoryBtn = document.getElementById('batch-go-history-btn');
   const batchFileInput = document.getElementById('batch-file');
   const batchThresholdInput = document.getElementById('batch-threshold');
+  let lastReportId = null;
 
   batchStartBtn.addEventListener('click', async () => {
     const file = batchFileInput.files[0];
@@ -1016,14 +1017,16 @@
       }
 
       const data = await resp.json();
-      const { count, risk_distribution: dist = {}, threshold: usedThreshold } = data;
+      const { count, risk_distribution: dist = {}, threshold: usedThreshold, report_id } = data;
       const low = dist.low || 0;
       const medium = dist.medium || 0;
       const high = dist.high || 0;
 
       batchProgressBar.style.width = '100%';
       batchProgressText.textContent = 'Пакетный анализ завершён.';
-      batchOpenReportBtn.disabled = false;
+      lastReportId = report_id || null;
+      batchOpenReportBtn.disabled = !lastReportId;
+      loadHistory();
 
       batchSummaryEl.innerHTML = `
         <div style="margin-bottom:6px;">
@@ -1036,7 +1039,7 @@
           <span class="pill pill-risk-high">Высокий: ${high}</span>
         </div>
         <div style="margin-top:8px;" class="muted">
-          Расчёты выполнены обученной baseline-моделью. Скачивание подробного отчёта появится позже.
+          Расчёты выполнены обученной baseline-моделью. Подробный отчёт доступен по кнопке ниже.
         </div>
       `;
     } catch (err) {
@@ -1056,7 +1059,13 @@
         количество сообщений, распределение по уровням риска и ссылка на подробный отчёт.
       </div>
     `;
+    lastReportId = null;
     batchOpenReportBtn.disabled = true;
+  });
+
+  batchOpenReportBtn.addEventListener('click', () => {
+    if (!lastReportId) return;
+    window.open(`/report/${lastReportId}`, '_blank');
   });
 
   batchGoHistoryBtn.addEventListener('click', () => {
@@ -1064,80 +1073,75 @@
   });
 
   // =========================
-  // ДЕМО-ИСТОРИЯ
+  // ИСТОРИЯ
   // =========================
   const historyTableBody = document.querySelector('#history-table tbody');
   const historyDetailsEl = document.getElementById('history-details');
   const historyOpenReportBtn = document.getElementById('history-open-report-btn');
+  let selectedHistoryId = null;
 
-  const demoHistoryData = [
-    { id: 1, datetime: '15.03.2025 14:32', type: 'Быстрый анализ', model: 'DL (LSTM)', count: 1, conflict: 'Высокий риск' },
-    { id: 2, datetime: '15.03.2025 13:05', type: 'Пакетный анализ', model: 'ML (GBM)', count: 10000, conflict: '12,5 %' },
-    { id: 3, datetime: '10.03.2025 19:20', type: 'Пакетный анализ', model: 'DL (LSTM)', count: 5000, conflict: '9,3 %' },
-    { id: 4, datetime: '05.03.2025 09:10', type: 'Быстрый анализ', model: 'ML (LR)', count: 1, conflict: 'Низкий риск' }
-  ];
+  async function loadHistory() {
+    try {
+      const resp = await fetch('/api/reports');
+      if (!resp.ok) {
+        historyTableBody.innerHTML = '<tr><td colspan="6">Не удалось загрузить историю.</td></tr>';
+        return;
+      }
+      const data = await resp.json();
+      const reports = data.reports || [];
 
-  function renderHistory() {
-    historyTableBody.innerHTML = '';
-    demoHistoryData.forEach(row => {
-      const tr = document.createElement('tr');
-      tr.dataset.id = String(row.id);
-      tr.innerHTML = `
-        <td>${row.id}</td>
-        <td>${row.datetime}</td>
-        <td>${row.type}</td>
-        <td>${row.model}</td>
-        <td>${row.count}</td>
-        <td>${row.conflict}</td>
-      `;
-      historyTableBody.appendChild(tr);
-    });
+      if (!reports.length) {
+        historyTableBody.innerHTML = '<tr><td colspan="6">История пуста. Выполните пакетный анализ.</td></tr>';
+        return;
+      }
+
+      historyTableBody.innerHTML = '';
+      reports.forEach((row, idx) => {
+        const dist = row.risk_distribution || {};
+        const total = row.count || 0;
+        const high = dist.high || 0;
+        const conflictShare = total ? `${((high / total) * 100).toFixed(1)} %` : '—';
+        const tr = document.createElement('tr');
+        tr.dataset.id = String(row.id);
+        tr.innerHTML = `
+          <td>${idx + 1}</td>
+          <td>${row.created_at || ''}</td>
+          <td>Пакетный анализ</td>
+          <td>Базовая ML</td>
+          <td>${row.count || 0}</td>
+          <td>${conflictShare}</td>
+        `;
+        historyTableBody.appendChild(tr);
+      });
+    } catch (err) {
+      console.error(err);
+      historyTableBody.innerHTML = '<tr><td colspan="6">Ошибка при загрузке истории.</td></tr>';
+    }
   }
 
-  renderHistory();
-
-  let selectedHistoryId = null;
+  loadHistory();
 
   historyTableBody.addEventListener('click', (e) => {
     const tr = e.target.closest('tr');
     if (!tr) return;
-    const id = parseInt(tr.dataset.id, 10);
+    const id = tr.dataset.id;
     selectedHistoryId = id;
-    historyOpenReportBtn.disabled = false;
+    historyOpenReportBtn.disabled = !id;
 
     [...historyTableBody.querySelectorAll('tr')].forEach(r => r.style.background = '');
     tr.style.background = '#f1f3ff';
 
-    const row = demoHistoryData.find(r => r.id === id);
-    if (row) {
-      historyDetailsEl.innerHTML = `
-        <div><strong>Выбранный анализ №${row.id} от ${row.datetime}</strong></div>
-        <div style="margin-top:6px;">
-          Тип анализа: <strong>${row.type}</strong><br>
-          Модель: <strong>${row.model}</strong><br>
-          Сообщений: <strong>${row.count}</strong><br>
-          Доля конфликтных / оценка риска: <strong>${row.conflict}</strong>
-        </div>
-        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn-secondary">
-            Показать топ-10 самых конфликтных сообщений
-          </button>
-          <button class="btn-ghost">
-            Открыть полный отчёт (макет)
-          </button>
-        </div>
-        <div class="muted" style="margin-top:6px;">
-          В реальной системе при нажатии на кнопки будут открываться детальные отчёты
-          по результатам сохранённых анализов.
-        </div>
-      `;
-    }
+    historyDetailsEl.innerHTML = `
+      <div><strong>Выбран отчёт ${id}</strong></div>
+      <div style="margin-top:6px;" class="muted">
+        Нажмите «Открыть подробный отчёт», чтобы просмотреть детали.
+      </div>
+    `;
   });
 
   historyOpenReportBtn.addEventListener('click', () => {
     if (!selectedHistoryId) return;
-    alert('В прототипе открытие отчёта реализовано как заглушка.\n' +
-      'В реальной системе здесь будет переход на страницу подробного отчёта.');
+    window.open(`/report/${selectedHistoryId}`, '_blank');
   });
 
   // Фильтры в истории сейчас не меняют данные — оставляем как UI-макет.

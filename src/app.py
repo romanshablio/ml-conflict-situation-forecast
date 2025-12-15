@@ -3,17 +3,15 @@ import csv
 import io
 import json
 from datetime import datetime
-from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, Response
 
 from .model_service import ConflictPredictionService
-from .config import REPORTS_DIR, BASE_DIR
+from .config import REPORTS_DIR, BASE_DIR as PROJECT_BASE_DIR
 
 
 app = Flask(__name__)
 service = ConflictPredictionService() 
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 HISTORY_FILE = REPORTS_DIR / "history.json"
@@ -60,7 +58,7 @@ def _save_report(report_data):
 
 @app.route("/")
 def index():
-    return send_from_directory(BASE_DIR, "index.html")
+    return send_from_directory(str(PROJECT_BASE_DIR), "index.html")
 
 
 @app.route("/api/predict", methods=["POST"])
@@ -234,14 +232,88 @@ def api_batch_predict_file():
             }
         )
 
+    now = datetime.utcnow().isoformat() + "Z"
+    report_id = now.replace(":", "").replace("-", "").replace(".", "")
+    report_data = {
+        "id": report_id,
+        "created_at": now,
+        "threshold": threshold,
+        "count": len(enriched),
+        "risk_distribution": risk_counts,
+        "results": enriched,
+    }
+    _save_report(report_data)
+
     return jsonify(
         {
             "threshold": threshold,
             "count": len(enriched),
             "risk_distribution": risk_counts,
             "results": enriched,
+            "report_id": report_id,
         }
     )
+
+
+@app.route("/api/reports", methods=["GET"])
+def api_reports():
+    """
+    Возвращает историю ранее сформированных отчётов.
+    """
+    history = _load_history()
+    return jsonify({"reports": history})
+
+
+@app.route("/report/<report_id>", methods=["GET"])
+def get_report(report_id):
+    """
+    Возвращает HTML-страницу с подробным отчётом.
+    """
+    report_path = REPORTS_DIR / f"{report_id}.json"
+    if not report_path.exists():
+        return jsonify({"error": "Отчёт не найден"}), 404
+
+    with open(report_path, "r", encoding="utf-8") as f:
+        report = json.load(f)
+
+    items_html = "".join(
+        f"<li><strong>{idx+1}.</strong> {row['text']} — "
+        f"риск: {row['risk_level']} (score: {row['conflict_score']:.3f})</li>"
+        for idx, row in enumerate(report.get("results", []))
+    )
+
+    html = f"""
+    <html lang="ru">
+      <head>
+        <meta charset="UTF-8">
+        <title>Отчёт {report_id}</title>
+        <style>
+          body {{ font-family: Arial, sans-serif; margin: 16px; }}
+          .pill {{ display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 12px; }}
+          .pill-low {{ background:#e6f7ff; color:#096dd9; }}
+          .pill-medium {{ background:#fff7e6; color:#d48806; }}
+          .pill-high {{ background:#fff1f0; color:#cf1322; }}
+          ul {{ padding-left: 18px; }}
+        </style>
+      </head>
+      <body>
+        <h2>Отчёт по пакетному анализу</h2>
+        <div>Идентификатор: <code>{report_id}</code></div>
+        <div>Создан: {report.get("created_at","")}</div>
+        <div>Сообщений: {report.get("count",0)}</div>
+        <div>Порог риска: {report.get("threshold",0.7)}</div>
+        <h3>Распределение по рискам</h3>
+        <div>
+          <span class="pill pill-low">Низкий: {report.get("risk_distribution",{}).get("low",0)}</span>
+          <span class="pill pill-medium">Средний: {report.get("risk_distribution",{}).get("medium",0)}</span>
+          <span class="pill pill-high">Высокий: {report.get("risk_distribution",{}).get("high",0)}</span>
+        </div>
+        <h3>Детализация</h3>
+        <ul>{items_html}</ul>
+      </body>
+    </html>
+    """
+    return Response(html, mimetype="text/html")
 
 
 if __name__ == "__main__":
