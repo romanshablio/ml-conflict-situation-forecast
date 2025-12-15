@@ -89,7 +89,23 @@
     nav {
       display: flex;
       gap: 8px;
+      flex-wrap: nowrap;
+    }
+
+    .user-panel {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       flex-wrap: wrap;
+    }
+
+    .user-chip {
+      padding: 6px 10px;
+      background: #f1f3ff;
+      color: var(--accent);
+      border-radius: 10px;
+      font-size: 12px;
+      border: 1px solid #dfe4ff;
     }
 
     .nav-btn {
@@ -471,7 +487,25 @@
   </style>
 </head>
 <body>
-<div class="app-shell">
+<div id="auth-wrapper" style="display:none; min-height:100vh; background:#f5f5f7; align-items:center; justify-content:center;">
+  <div style="max-width:360px; margin:0 auto; padding:20px; background:#fff; border:1px solid #e5e5e5; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,0.06);">
+    <h2 style="margin:0 0 12px; font-size:20px;">Вход в систему</h2>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <div>
+        <label for="login-name">Логин</label>
+        <input type="text" id="login-name" placeholder="Admin / Analyst / Chief">
+      </div>
+      <div>
+        <label for="login-pass">Пароль</label>
+        <input type="password" id="login-pass" placeholder="Введите пароль">
+      </div>
+      <button class="btn-primary" id="login-btn">Войти</button>
+      <div class="muted" id="login-status">Доступные пользователи: Admin, Analyst, Chief.</div>
+    </div>
+  </div>
+</div>
+
+<div class="app-shell" id="app-shell" style="display:none;">
 
   <!-- HEADER -->
   <header>
@@ -490,6 +524,10 @@
         <button class="nav-btn" data-section="history">История и отчёты</button>
         <button class="nav-btn" data-section="train">Обучение модели</button>
       </nav>
+      <div class="user-panel">
+        <span class="user-chip" id="user-chip">—</span>
+        <button class="btn-ghost" id="logout-btn">Выйти</button>
+      </div>
     </div>
   </header>
 
@@ -515,7 +553,7 @@
               </div>
               <span class="badge">
                 <span class="status-dot status-dot-online"></span>
-                Модель загружена (демо)
+                Модель загружена
               </span>
             </div>
 
@@ -600,7 +638,7 @@
               <div>
                 <label for="batch-column">Столбец с текстом сообщений</label>
                 <select id="batch-column">
-                  <option value="">— будет доступен после анализа файла (демо) —</option>
+                  <option value="">— будет доступен после анализа файла —</option>
                   <option value="comment_text">comment_text</option>
                   <option value="text">text</option>
                 </select>
@@ -761,6 +799,21 @@
             </div>
           </div>
         </div>
+
+        <div style="height:14px;"></div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Отчёт по модели</div>
+              <div class="card-subtitle">Визуализации и метрики последней обученной модели</div>
+            </div>
+            <button class="btn-ghost" id="model-report-refresh-btn">Обновить</button>
+          </div>
+          <div id="model-report-content" class="muted">
+            Данные о модели ещё не загружены.
+          </div>
+        </div>
       </section>
 
       <!-- SECTION: TRAIN -->
@@ -822,21 +875,60 @@
     history: document.getElementById('section-history'),
     train: document.getElementById('section-train')
   };
+  const appShell = document.getElementById('app-shell');
+  const authWrapper = document.getElementById('auth-wrapper');
+  const loginNameEl = document.getElementById('login-name');
+  const loginPassEl = document.getElementById('login-pass');
+  const loginBtn = document.getElementById('login-btn');
+  const loginStatus = document.getElementById('login-status');
+  const logoutBtn = document.getElementById('logout-btn');
+  const userChip = document.getElementById('user-chip');
+  let currentUser = null;
+
+  function applyRoleVisibility(role) {
+    // Скрываем/отключаем разделы в зависимости от роли
+    const navMap = {
+      quick: document.querySelector('.nav-btn[data-section="quick"]'),
+      batch: document.querySelector('.nav-btn[data-section="batch"]'),
+      history: document.querySelector('.nav-btn[data-section="history"]'),
+      train: document.querySelector('.nav-btn[data-section="train"]'),
+    };
+
+    if (role === 'admin') {
+      Object.values(navMap).forEach(el => el && (el.style.display = ''));
+    } else if (role === 'analyst') {
+      navMap.train.style.display = 'none';
+      navMap.quick.style.display = '';
+      navMap.batch.style.display = '';
+      navMap.history.style.display = '';
+    } else if (role === 'chief') {
+      navMap.train.style.display = 'none';
+      navMap.batch.style.display = 'none';
+      navMap.quick.style.display = 'none';
+      navMap.history.style.display = '';
+    }
+  }
+
+  function setActiveSection(key) {
+    navButtons.forEach(b => b.classList.remove('active'));
+    Object.values(sections).forEach(sec => sec.classList.remove('active'));
+    const btn = document.querySelector(`.nav-btn[data-section="${key}"]`);
+    if (btn) btn.classList.add('active');
+    if (sections[key]) sections[key].classList.add('active');
+  }
 
   navButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       const target = btn.getAttribute('data-section');
-      navButtons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      Object.values(sections).forEach(sec => sec.classList.remove('active'));
-      if (sections[target]) {
-        sections[target].classList.add('active');
-      }
+      if (!currentUser) return;
+      if (currentUser.role === 'chief' && target !== 'history') return;
+      if (currentUser.role === 'analyst' && target === 'train') return;
+      setActiveSection(target);
     });
   });
 
   // =========================
-  // ДЕМО-ЛОГИКА БЫСТРОГО АНАЛИЗА
+  // ЛОГИКА БЫСТРОГО АНАЛИЗА
   // (имитация, вместо реального backend)
   // =========================
   const quickAnalyzeBtn = document.getElementById('quick-analyze-btn');
@@ -850,6 +942,10 @@
   let lastQuickThreshold = 0.7;
 
   quickAnalyzeBtn.addEventListener('click', async () => {
+  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'analyst')) {
+    quickResultsEl.innerHTML = '<span class="muted">Недостаточно прав. Обратитесь к администратору.</span>';
+    return;
+  }
   const text = quickTextEl.value.trim();
   if (!text) {
     quickResultsEl.innerHTML = '<span class="muted">Введите текст для анализа.</span>';
@@ -998,6 +1094,10 @@
   let lastReportId = null;
 
   batchStartBtn.addEventListener('click', async () => {
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'analyst')) {
+      batchSummaryEl.innerHTML = '<span class="muted">Недостаточно прав для пакетного анализа.</span>';
+      return;
+    }
     const file = batchFileInput.files[0];
     if (!file) {
       batchSummaryEl.innerHTML = '<span class="muted">Пожалуйста, выберите файл (CSV или TXT).</span>';
@@ -1091,9 +1191,12 @@
   const historyTableBody = document.querySelector('#history-table tbody');
   const historyDetailsEl = document.getElementById('history-details');
   const historyOpenReportBtn = document.getElementById('history-open-report-btn');
+  const modelReportContent = document.getElementById('model-report-content');
+  const modelReportRefreshBtn = document.getElementById('model-report-refresh-btn');
   let selectedHistoryId = null;
 
   async function loadHistory() {
+    if (!currentUser) return;
     try {
       const resp = await fetch('/api/reports');
       if (!resp.ok) {
@@ -1113,10 +1216,14 @@
         const dist = row.risk_distribution || {};
         const total = row.count || 0;
         const high = dist.high || 0;
-        const conflictShare = total ? `${((high / total) * 100).toFixed(1)} %` : '—';
+        const conflictShare = (row.type === 'training')
+          ? '—'
+          : (total ? `${((high / total) * 100).toFixed(1)} %` : '—');
         const tr = document.createElement('tr');
         tr.dataset.id = String(row.id);
-        const typeLabel = row.type === 'quick' ? 'Быстрый анализ' : 'Пакетный анализ';
+        let typeLabel = 'Пакетный анализ';
+        if (row.type === 'quick') typeLabel = 'Быстрый анализ';
+        if (row.type === 'training') typeLabel = 'Обучение модели';
         tr.innerHTML = `
           <td>${idx + 1}</td>
           <td>${row.created_at || ''}</td>
@@ -1159,6 +1266,56 @@
     window.open(`/report/${selectedHistoryId}`, '_blank');
   });
 
+  async function loadModelReport() {
+    if (!currentUser) return;
+    modelReportContent.innerHTML = 'Загружаем данные модели...';
+    try {
+      const resp = await fetch('/api/model_report');
+      if (!resp.ok) {
+        modelReportContent.innerHTML = 'Не удалось загрузить отчёт по модели.';
+        return;
+      }
+      const data = await resp.json();
+      const model = data.model || {};
+      if (model.error) {
+        modelReportContent.innerHTML = `Ошибка: ${model.error}`;
+        return;
+      }
+      const artifacts = model.artifacts || {};
+      const metrics = model.metrics || {};
+
+      let html = `<div><strong>Модель:</strong> ${model.id || '—'}</div>`;
+      if (metrics.macro_auc !== undefined && metrics.macro_auc !== null) {
+        html += `<div>Macro AUC: ${metrics.macro_auc}</div>`;
+      }
+
+      const links = [];
+      const images = [];
+      Object.entries(artifacts).forEach(([name, fname]) => {
+        if (!fname) return;
+        links.push(`<li>${name}: <a href="/report_file/${fname}" target="_blank">${fname}</a></li>`);
+        if (fname.endsWith('.png') || fname.endsWith('.jpg') || fname.endsWith('.jpeg')) {
+          images.push(
+            `<div style="margin-top:10px;"><div class="muted">${name}</div><img src="/report_file/${fname}" alt="${name}" style="max-width:720px; width:100%; height:auto; border:1px solid #eee; border-radius:8px;"></div>`
+          );
+        }
+      });
+
+      if (images.length) {
+        html += images.join('');
+      }
+      if (links.length) {
+        html += `<ul>${links.join('')}</ul>`;
+      }
+      modelReportContent.innerHTML = html || 'Нет артефактов для отображения.';
+    } catch (err) {
+      console.error(err);
+      modelReportContent.innerHTML = 'Ошибка при загрузке отчёта по модели.';
+    }
+  }
+
+  modelReportRefreshBtn.addEventListener('click', loadModelReport);
+
   // =========================
   // ОБУЧЕНИЕ
   // =========================
@@ -1168,6 +1325,10 @@
   const trainStatusEl = document.getElementById('train-status');
 
   trainStartBtn.addEventListener('click', async () => {
+    if (!currentUser || currentUser.role !== 'admin') {
+      trainStatusEl.innerHTML = 'Только администратор может обучать модель.';
+      return;
+    }
     const file = trainFileInput.files[0];
     if (!file) {
       trainStatusEl.innerHTML = 'Выберите CSV-файл с колонками text и toxic (0/1).';
@@ -1202,6 +1363,12 @@
         <div>Текстовая колонка: ${data.text_column}</div>
         <div>Колонка метки: ${data.label_column}</div>
         <div class="muted" style="margin-top:6px;">Модель обновлена и используется для новых прогнозов.</div>
+        <div style="margin-top:6px;">Отчёт: <a href="/report/${data.report_id}" target="_blank">${data.report_id}</a></div>
+        <div>Графики:
+          <a href="/report_file/${data.artifacts?.label_distribution || ''}" target="_blank">распределение</a>,
+          <a href="/report_file/${data.artifacts?.roc || ''}" target="_blank">ROC</a>
+        </div>
+        <div><a href="/report_file/${data.artifacts?.metrics || ''}" target="_blank">Текстовый отчёт</a></div>
       `;
 
       // после успешного обучения обновим историю, чтобы отобразились новые отчёты при следующих анализах
@@ -1220,7 +1387,81 @@
     trainStatusEl.innerHTML = 'Выберите файл и запустите обучение. Прогресс отображается здесь.';
   });
 
-  // Фильтры в истории сейчас не меняют данные — оставляем как UI-макет.
+  // Авторизация
+  async function checkAuth() {
+    try {
+      const resp = await fetch('/api/me');
+      if (!resp.ok) {
+        throw new Error('unauthorized');
+      }
+      const data = await resp.json();
+      currentUser = { user: data.user, role: data.role };
+      authWrapper.style.display = 'none';
+      appShell.style.display = 'flex';
+      userChip.textContent = `${currentUser.user} (${currentUser.role})`;
+      applyRoleVisibility(currentUser.role);
+      setActiveSection(currentUser.role === 'chief' ? 'history' : 'quick');
+      loadHistory();
+      loadModelReport();
+      loginStatus.textContent = `Вы вошли как ${currentUser.user} (${currentUser.role}).`;
+    } catch (err) {
+      currentUser = null;
+      authWrapper.style.display = 'flex';
+      appShell.style.display = 'none';
+      userChip.textContent = '—';
+    }
+  }
+
+  loginBtn.addEventListener('click', async () => {
+    const login = (loginNameEl.value || '').trim();
+    const password = loginPassEl.value || '';
+    loginBtn.disabled = true;
+    loginStatus.textContent = 'Выполняется вход...';
+    try {
+      const resp = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login, password }),
+      });
+      if (!resp.ok) {
+        loginStatus.textContent = 'Неверный логин или пароль.';
+        loginBtn.disabled = false;
+        return;
+      }
+      const data = await resp.json();
+      currentUser = { user: data.user, role: data.role };
+      authWrapper.style.display = 'none';
+      appShell.style.display = 'flex';
+      userChip.textContent = `${currentUser.user} (${currentUser.role})`;
+      applyRoleVisibility(currentUser.role);
+      setActiveSection(currentUser.role === 'chief' ? 'history' : 'quick');
+      loadHistory();
+      loadModelReport();
+      loginStatus.textContent = '';
+    } catch (err) {
+      loginStatus.textContent = 'Ошибка при входе.';
+    } finally {
+      loginBtn.disabled = false;
+    }
+  });
+
+  logoutBtn.addEventListener('click', async () => {
+    logoutBtn.disabled = true;
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      currentUser = null;
+      userChip.textContent = '—';
+      appShell.style.display = 'none';
+      authWrapper.style.display = 'flex';
+      loginStatus.textContent = 'Вы вышли. Введите логин и пароль.';
+      logoutBtn.disabled = false;
+    }
+  });
+
+  checkAuth();
 </script>
 </body>
 </html>

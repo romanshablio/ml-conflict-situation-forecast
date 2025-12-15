@@ -3,25 +3,39 @@ import csv
 import io
 import json
 from datetime import datetime
-from flask import Flask, request, jsonify, send_from_directory, Response
+from functools import wraps
+
+from flask import Flask, request, jsonify, send_from_directory, Response, session
 import pandas as pd
 import joblib
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_auc_score
 
 from .model_service import ConflictPredictionService
-from .config import REPORTS_DIR, BASE_DIR as PROJECT_BASE_DIR, CUSTOM_DATASET_PATH, BASELINE_MODEL_PATH
-from .data_utils import TOXIC_LABELS
+from .config import (
+    REPORTS_DIR,
+    BASE_DIR as PROJECT_BASE_DIR,
+    CUSTOM_DATASET_PATH,
+    BASELINE_MODEL_PATH,
+    SECRET_KEY,
+)
+from .data_utils import TOXIC_LABELS, load_russian_toxic_data
+from .visualization import save_label_distribution, save_roc_curves, save_text_report
 
 
 app = Flask(__name__)
 service = ConflictPredictionService() 
+app.secret_key = SECRET_KEY
 
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 HISTORY_FILE = REPORTS_DIR / "history.json"
+MODEL_META_FILE = REPORTS_DIR / "model_meta.json"
 
 
 def _load_history():
@@ -65,6 +79,115 @@ def _save_report(report_data):
     return report_path
 
 
+def _load_model_meta():
+    if MODEL_META_FILE.exists():
+        try:
+            with open(MODEL_META_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_model_meta(meta: dict) -> None:
+    try:
+        with open(MODEL_META_FILE, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Service] Не удалось сохранить метаданные модели: {exc}")
+
+CURRENT_MODEL_META = _load_model_meta() or {"id": "baseline", "artifacts": None, "metrics": None}
+
+
+def _ensure_model_report() -> dict:
+    """
+    Если метаданные модели или артефакты отсутствуют, генерируем отчёт по текущей модели.
+    Используем готовую загруженную модель и исходный датасет.
+    """
+    meta = _load_model_meta() or CURRENT_MODEL_META or {}
+    meta.setdefault("id", "baseline")
+    meta.setdefault("artifacts", {})
+    meta.setdefault("metrics", {})
+
+    artifacts = meta.get("artifacts") or {}
+    # Если артефакты уже есть и файлы доступны — возвращаем
+    if artifacts and all((REPORTS_DIR / fname).exists() for fname in artifacts.values() if fname):
+        return meta
+
+    if not service.is_ready():
+        meta["error"] = "Модель не загружена."
+        return meta
+
+    try:
+        X_train, X_test, y_train, y_test = load_russian_toxic_data()
+    except Exception as exc:  # noqa: BLE001
+        meta["error"] = f"Не удалось загрузить датасет: {exc}"
+        return meta
+
+    try:
+        y_prob = service.model.predict_proba(X_test)
+    except Exception as exc:  # noqa: BLE001
+        meta["error"] = f"Не удалось получить вероятности модели: {exc}"
+        return meta
+
+    label_dist_path = REPORTS_DIR / "model_label_dist.png"
+    roc_path = REPORTS_DIR / "model_roc.png"
+    text_report_path = REPORTS_DIR / "model_metrics.txt"
+
+    try:
+        save_label_distribution(pd.concat([y_train, y_test]), TOXIC_LABELS, label_dist_path)
+    except Exception as exc:  # noqa: BLE001
+        meta["error"] = f"Ошибка сохранения распределения меток: {exc}"
+
+    roc_auc = {}
+    for i, lbl in enumerate(TOXIC_LABELS):
+        try:
+            if y_test.iloc[:, i].nunique() < 2:
+                roc_auc[lbl] = None
+                continue
+            roc_auc[lbl] = float(roc_auc_score(y_test.iloc[:, i], y_prob[:, i]))
+        except Exception:
+            roc_auc[lbl] = None
+
+    macro_auc = (
+        float(np.mean([v for v in roc_auc.values() if v is not None]))
+        if any(v is not None for v in roc_auc.values())
+        else None
+    )
+
+    try:
+        save_roc_curves(y_test.to_numpy(), y_prob, TOXIC_LABELS, roc_path)
+    except Exception as exc:  # noqa: BLE001
+        meta["error"] = f"Ошибка сохранения ROC-кривых: {exc}"
+
+    try:
+        save_text_report(
+            {
+                "n_samples": len(X_train) + len(X_test),
+                "test_size": len(X_test),
+                "roc_auc": roc_auc,
+                "macro_auc": macro_auc,
+                "notes": "Автоматически сгенерированный отчёт по текущей модели.",
+            },
+            text_report_path,
+        )
+    except Exception as exc:  # noqa: BLE001
+        meta["error"] = f"Ошибка сохранения текстового отчёта: {exc}"
+
+    new_meta = {
+        "id": meta.get("id") or "baseline_autogen",
+        "artifacts": {
+            "label_distribution": label_dist_path.name if label_dist_path.exists() else None,
+            "roc": roc_path.name if roc_path.exists() else None,
+            "metrics": text_report_path.name if text_report_path.exists() else None,
+        },
+        "metrics": {"roc_auc": roc_auc, "macro_auc": macro_auc},
+    }
+    CURRENT_MODEL_META.update(new_meta)
+    _save_model_meta(CURRENT_MODEL_META)
+    return CURRENT_MODEL_META
+
+
 def _build_pipeline():
     return Pipeline(
         [
@@ -82,7 +205,7 @@ def _build_pipeline():
                     LogisticRegression(
                         solver="liblinear",
                         max_iter=1000,
-                        n_jobs=12,
+                        n_jobs=1,  # liblinear не использует >1, чтобы не ругался
                     )
                 ),
             ),
@@ -90,12 +213,62 @@ def _build_pipeline():
     )
 
 
+USERS = {
+    "Admin": {"password": "pass_A2025", "role": "admin"},
+    "Analyst": {"password": "pass_B2025", "role": "analyst"},
+    "Chief": {"password": "pass_C2025", "role": "chief"},
+}
+
+
+def require_roles(*roles):
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = session.get("user")
+            role = session.get("role")
+            if not user:
+                return jsonify({"error": "Unauthorized"}), 401
+            if roles and role not in roles:
+                return jsonify({"error": "Forbidden"}), 403
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 @app.route("/")
 def index():
     return send_from_directory(str(PROJECT_BASE_DIR), "index.html")
 
 
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data = request.get_json(force=True, silent=True) or {}
+    login = data.get("login")
+    password = data.get("password")
+    user = USERS.get(login)
+    if not user or user["password"] != password:
+        return jsonify({"error": "Неверный логин или пароль"}), 401
+
+    session["user"] = login
+    session["role"] = user["role"]
+    return jsonify({"user": login, "role": user["role"]})
+
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.clear()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/me", methods=["GET"])
+def api_me():
+    if "user" not in session:
+        return jsonify({"authenticated": False}), 401
+    return jsonify({"authenticated": True, "user": session["user"], "role": session.get("role")})
+
+
 @app.route("/api/predict", methods=["POST"])
+@require_roles("admin", "analyst")
 def api_predict():
     """
     Ожидает JSON:
@@ -139,6 +312,7 @@ def api_predict():
 
 
 @app.route("/api/batch_predict", methods=["POST"])
+@require_roles("admin", "analyst")
 def api_batch_predict():
     """
     Ожидает JSON:
@@ -191,6 +365,7 @@ def api_batch_predict():
 
 
 @app.route("/api/batch_predict_file", methods=["POST"])
+@require_roles("admin", "analyst")
 def api_batch_predict_file():
     """
     Принимает multipart/form-data с файлом.
@@ -276,6 +451,9 @@ def api_batch_predict_file():
         "risk_distribution": risk_counts,
         "results": enriched,
         "type": "batch",
+        "model_id": CURRENT_MODEL_META.get("id"),
+        "artifacts": CURRENT_MODEL_META.get("artifacts"),
+        "metrics": CURRENT_MODEL_META.get("metrics"),
     }
     _save_report(report_data)
 
@@ -295,8 +473,21 @@ def api_reports():
     """
     Возвращает историю ранее сформированных отчётов.
     """
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
     history = _load_history()
     return jsonify({"reports": history})
+
+
+@app.route("/api/model_report", methods=["GET"])
+def api_model_report():
+    """
+    Возвращает метаданные текущей модели и её артефакты (графики/отчёты).
+    """
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    meta = _ensure_model_report()
+    return jsonify({"model": meta})
 
 
 @app.route("/report/<report_id>", methods=["GET"])
@@ -304,6 +495,9 @@ def get_report(report_id):
     """
     Возвращает HTML-страницу с подробным отчётом.
     """
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+
     report_path = REPORTS_DIR / f"{report_id}.json"
     if not report_path.exists():
         return jsonify({"error": "Отчёт не найден"}), 404
@@ -313,9 +507,38 @@ def get_report(report_id):
 
     items_html = "".join(
         f"<li><strong>{idx+1}.</strong> {row['text']} — "
-        f"риск: {row['risk_level']} (score: {row['conflict_score']:.3f})</li>"
+        f"риск: {row.get('risk_level','-')} (score: {row.get('conflict_score',0):.3f})</li>"
         for idx, row in enumerate(report.get("results", []))
     )
+
+    artifacts = report.get("artifacts") or {}
+    # Если графики не сохранены в самом отчёте, пробуем подтянуть их из отчёта обучения модели
+    if (not artifacts) and report.get("model_id"):
+        train_report = REPORTS_DIR / f"{report.get('model_id')}.json"
+        if train_report.exists():
+            try:
+                with open(train_report, "r", encoding="utf-8") as tf:
+                    tdata = json.load(tf)
+                    artifacts = tdata.get("artifacts") or {}
+                    # Заполним метрики, если их не было
+                    if not report.get("metrics") and tdata.get("metrics"):
+                        report["metrics"] = tdata["metrics"]
+            except Exception:
+                pass
+    art_html = ""
+    if artifacts:
+        imgs = []
+        links = []
+        for name, fname in artifacts.items():
+            if fname:
+                links.append(f'<li>{name}: <a href="/report_file/{fname}" target="_blank">{fname}</a></li>')
+                if fname.endswith((".png", ".jpg", ".jpeg")):
+                    imgs.append(f'<div style="margin-top:10px;"><div class="muted">{name}</div><img src="/report_file/{fname}" alt="{name}" style="max-width:720px; width:100%; height:auto; border:1px solid #eee; border-radius:8px;"></div>')
+        art_html = "<h3>Визуализации</h3>"
+        if imgs:
+            art_html += "".join(imgs)
+        if links:
+            art_html += "<ul>" + "".join(links) + "</ul>"
 
     html = f"""
     <html lang="ru">
@@ -335,24 +558,37 @@ def get_report(report_id):
         <h2>Отчёт по пакетному анализу</h2>
         <div>Идентификатор: <code>{report_id}</code></div>
         <div>Создан: {report.get("created_at","")}</div>
-        <div>Тип анализа: {report.get("type","batch")}</div>
-        <div>Сообщений: {report.get("count",0)}</div>
-        <div>Порог риска: {report.get("threshold",0.7)}</div>
-        <h3>Распределение по рискам</h3>
-        <div>
-          <span class="pill pill-low">Низкий: {report.get("risk_distribution",{}).get("low",0)}</span>
-          <span class="pill pill-medium">Средний: {report.get("risk_distribution",{}).get("medium",0)}</span>
-          <span class="pill pill-high">Высокий: {report.get("risk_distribution",{}).get("high",0)}</span>
-        </div>
-        <h3>Детализация</h3>
-        <ul>{items_html}</ul>
+        <div>Тип: {report.get("type","batch")}</div>
+        <div>Модель: {report.get("model_id","n/a")}</div>
+        <div>Объём: {report.get("count",0)}</div>
+        <div>Порог риска: {report.get("threshold","—")}</div>
+        {"<h3>Распределение по рискам</h3>" if report.get("type") in ("batch","quick") else ""}
+        {"<div><span class='pill pill-low'>Низкий: "+str(report.get('risk_distribution',{}).get('low',0))+"</span> <span class='pill pill-medium'>Средний: "+str(report.get('risk_distribution',{}).get('medium',0))+"</span> <span class='pill pill-high'>Высокий: "+str(report.get('risk_distribution',{}).get('high',0))+"</span></div>" if report.get('type') in ('batch','quick') else ""}
+        {"<h3>Детализация</h3><ul>"+items_html+"</ul>" if items_html else ""}
+        {"<h3>Метрики</h3>" if report.get("metrics") else ""}
+        {"<div>Macro AUC: "+str(report.get('metrics',{}).get('macro_auc'))+"</div>" if report.get("metrics") else ""}
+        {art_html}
       </body>
     </html>
     """
     return Response(html, mimetype="text/html")
 
 
+@app.route("/report_file/<path:fname>", methods=["GET"])
+def get_report_file(fname):
+    """
+    Отдаёт сохранённые графики/отчёты из папки reports.
+    """
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    target = REPORTS_DIR / fname
+    if not target.exists():
+        return jsonify({"error": "Файл не найден"}), 404
+    return send_from_directory(str(REPORTS_DIR), fname)
+
+
 @app.route("/api/train_model", methods=["POST"])
+@require_roles("admin")
 def api_train_model():
     """
     Обучает ML-модель на загруженном датасете.
@@ -405,14 +641,76 @@ def api_train_model():
 
     X = df[text_col]
 
+    # Разделим данные для оценки
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y["toxic"] if "toxic" in y else None
+    )
+
     pipeline = _build_pipeline()
-    pipeline.fit(X, y)
+    pipeline.fit(X_train, y_train)
 
     # сохраняем датасет и модель
     CUSTOM_DATASET_PATH.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(CUSTOM_DATASET_PATH, index=False)
     joblib.dump(pipeline, BASELINE_MODEL_PATH)
     service.model = pipeline
+
+    # Метрики и визуализация
+    y_prob = pipeline.predict_proba(X_test)
+    roc_auc = {}
+    for i, lbl in enumerate(TOXIC_LABELS):
+        try:
+            roc_auc[lbl] = float(roc_auc_score(y_test.iloc[:, i], y_prob[:, i]))
+        except ValueError:
+            roc_auc[lbl] = None
+    macro_auc = (
+        float(np.mean([v for v in roc_auc.values() if v is not None]))
+        if any(v is not None for v in roc_auc.values())
+        else None
+    )
+
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    report_id = "training_" + timestamp.replace(":", "").replace("-", "").replace(".", "")
+
+    label_dist_path = REPORTS_DIR / f"{report_id}_label_dist.png"
+    roc_path = REPORTS_DIR / f"{report_id}_roc.png"
+    text_report_path = REPORTS_DIR / f"{report_id}_metrics.txt"
+
+    save_label_distribution(y, TOXIC_LABELS, label_dist_path)
+    save_roc_curves(y_test.to_numpy(), y_prob, TOXIC_LABELS, roc_path)
+    save_text_report(
+        {
+            "n_samples": len(df),
+            "test_size": len(X_test),
+            "roc_auc": roc_auc,
+            "macro_auc": macro_auc,
+            "notes": "Обучение базовой ML-модели на пользовательском датасете.",
+        },
+        text_report_path,
+    )
+
+    artifacts = {
+        "label_distribution": label_dist_path.name,
+        "roc": roc_path.name,
+        "metrics": text_report_path.name,
+    }
+    report_data = {
+        "id": report_id,
+        "created_at": timestamp,
+        "threshold": None,
+        "count": len(df),
+        "risk_distribution": {},
+        "results": [],
+        "type": "training",
+        "artifacts": artifacts,
+        "metrics": {"roc_auc": roc_auc, "macro_auc": macro_auc},
+        "model_id": report_id,
+    }
+    _save_report(report_data)
+    CURRENT_MODEL_META["id"] = report_id
+    CURRENT_MODEL_META["artifacts"] = artifacts
+    CURRENT_MODEL_META["metrics"] = {"roc_auc": roc_auc, "macro_auc": macro_auc}
+    _save_model_meta(CURRENT_MODEL_META)
 
     return jsonify(
         {
@@ -421,11 +719,19 @@ def api_train_model():
             "text_column": text_col,
             "label_column": label_col,
             "model_path": str(BASELINE_MODEL_PATH),
+            "report_id": report_id,
+            "artifacts": {
+                "label_distribution": label_dist_path.name,
+                "roc": roc_path.name,
+                "metrics": text_report_path.name,
+            },
+            "model_id": report_id,
         }
     )
 
 
 @app.route("/api/save_quick", methods=["POST"])
+@require_roles("admin", "analyst")
 def api_save_quick():
     """
     Сохраняет результат быстрого анализа как отдельный отчёт (1 сообщение).
@@ -464,6 +770,9 @@ def api_save_quick():
             }
         ],
         "type": "quick",
+        "model_id": CURRENT_MODEL_META.get("id"),
+        "artifacts": CURRENT_MODEL_META.get("artifacts"),
+        "metrics": CURRENT_MODEL_META.get("metrics"),
     }
     _save_report(report_data)
 

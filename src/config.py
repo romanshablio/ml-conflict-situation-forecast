@@ -9,6 +9,9 @@ MODELS_DIR = BASE_DIR / "models"
 REPORTS_DIR = DATA_DIR / "reports"
 CUSTOM_DATASET_PATH = DATA_DIR / "custom_dataset.csv"
 
+# Секрет для Flask-сессий (для демо можно оставить по умолчанию)
+SECRET_KEY = "demo-secret-key-change-in-prod"
+
 # Пути к русскоязычным датасетам
 # Переименуй свои файлы в соответствии с этими именами
 RU_2CH_PIKABU_PATH = DATA_DIR / "ru_toxic_2ch_pikabu.csv"
