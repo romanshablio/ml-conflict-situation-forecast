@@ -1,170 +1,151 @@
 # ml-conflict-situation-forecast
 
-Инструмент построенный на машинном обучении для 
-Прогнозирования развития конфликтных ситуаций методами машинного интеллекта
+A machine learning prototype for forecasting conflict situations from text messages.
 
-Проект содержит:
+The project contains an intelligent text analysis prototype, a baseline machine learning model for toxicity and conflict estimation, a Flask inference API, and a simple HTML/JavaScript demo interface. Some parts, including a deep learning model and extended analytics, are planned as part of the graduation thesis work.
 
-- прототип интеллектуальной системы анализа текстовых сообщений;
-- baseline‑модель машинного обучения для оценки токсичности/конфликтности;
-- Flask‑API для инференса;
-- веб‑интерфейс (HTML/JS) для демонстрации работы системы.
+## Project Contents
 
-Часть функциональности (DL‑модель, полноценное обучение и расширенная аналитика) запланирована к реализации в рамках ВКР.
+- Intelligent text message analysis prototype.
+- Baseline machine learning model for toxicity and conflict detection.
+- Flask API for inference.
+- Web interface for demonstration.
+- Future placeholders for a deep learning model and extended analytics.
 
----
+## Project Structure
 
-## Структура проекта
-
-```
+```text
 ml-conflict-situation-forecast/
-├─ data/
-│  ├─ ru_toxic_2ch_pikabu.csv   # русскоязычный датасет токсичности (2ch.hk + pikabu.ru, Kaggle)
-│  └─ ru_toxic_ok.txt           # русскоязычный датасет токсичности (ok.ru, Kaggle, fastText-формат)
-├─ models/
-│  ├─ baseline_model.pkl        # обученная baseline ML‑модель (создаётся после обучения или скачивается отдельно)
-│  ├─ tokenizer.pkl             # задел под DL‑модель (будет использоваться в ВКР)
-│  └─ dl_model.h5               # задел под DL‑модель (будет использоваться в ВКР)
-├─ src/
-│  ├─ __init__.py
-│  ├─ config.py                 # общие настройки путей и параметров
-│  ├─ data_utils.py             # загрузка и разбиение данных для моделей ML
-│  ├─ baseline_model.py         # обучение baseline‑модели токсичности на русскоязычных данных
-│  ├─ dl_model.py               # архитектура и обучение DL‑модели (проект, на будущее)
-│  ├─ model_service.py          # сервис инференса для русскоязычной baseline‑модели
-│  └─ app.py                    # Flask‑приложение, REST‑API и отдача index.html
-├─ index.html                   # прототип веб‑интерфейса (быстрый анализ, пакетный анализ и пр.)
-├─ requirements.txt             # зависимости Python
-└─ README.md
+|-- data/
+|   |-- ru_toxic_2ch_pikabu.csv
+|   +-- ru_toxic_ok.txt
+|-- models/
+|   |-- baseline_model.pkl
+|   |-- tokenizer.pkl
+|   +-- dl_model.h5
+|-- src/
+|   |-- config.py
+|   |-- data_utils.py
+|   |-- baseline_model.py
+|   |-- dl_model.py
+|   |-- model_service.py
+|   +-- app.py
+|-- index.html
+|-- requirements.txt
++-- README.md
 ```
 
-> Примечание: в текущей версии используется **baseline‑модель ML**; файлы, связанные с DL‑моделью, являются заделом для дальнейшей доработки в рамках ВКР.
+The current version uses a baseline ML model. Deep learning related files are placeholders for future development.
 
----
+## Requirements
 
-## Требования
+- Python 3.9 or newer.
+- Virtual environment such as `venv`.
+- External Russian-language toxicity datasets from Kaggle or Google Drive.
+- macOS, Linux, or Windows.
 
-- Python 3.9+  
-- виртуальное окружение (`venv` или аналог);  
-- исходные русскоязычные датасеты токсичных комментариев скачиваются отдельно с Kaggle или Google Drive (ссылка ниже);  
-- ОС: macOS / Linux / Windows.
+## Quick Start
 
----
-
-## Быстрый старт (для проверки преподавателем)
-
-1. **Клонируйте репозиторий**
+1. Clone the repository.
 
    ```bash
    git clone https://github.com/romanshablio/ml-conflict-situation-forecast.git
    cd ml-conflict-situation-forecast
    ```
 
-2. **Создайте и активируйте виртуальное окружение**
+2. Create and activate a virtual environment.
 
    ```bash
    python3 -m venv venv
-   source venv/bin/activate        # для macOS / Linux
-   # venv\Scripts\activate         # для Windows PowerShell
+   source venv/bin/activate
+   # Windows PowerShell:
+   # venv\Scripts\activate
    ```
 
-3. **Установите зависимости**
+3. Install dependencies.
 
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Подготовьте внешние файлы (датасет и модель)**
+4. Prepare external files.
 
-   Используются два открытых русскоязычных датасета токсичных комментариев с Kaggle:  
-   — 2ch.hk + Pikabu.ru (CSV-формат)  
-   — ok.ru (fastText-формат, TXT)  
-   По условиям лицензирования и из‑за большого размера исходные данные и обученные модели **не размещаются в открытом репозитории GitHub**.
+   The project uses two open Russian-language toxic comment datasets:
 
-   Для удобства проверки подготовлена общая папка на Google Drive:
+   - 2ch.hk + Pikabu.ru dataset in CSV format.
+   - ok.ru dataset in fastText TXT format.
 
-   👉 https://drive.google.com/drive/folders/1J-vftGANncLTPWcX7b7MGhfnJwSfVZnd?usp=sharing
+   Because of licensing and file size, the raw datasets and trained models are not stored directly in this GitHub repository.
 
-   В ней находятся:
-
-   - `data/ru_toxic_2ch_pikabu.csv` — датасет токсичности 2ch.hk + pikabu.ru (Kaggle)
-   - `data/ru_toxic_ok.txt` — датасет токсичности ok.ru (Kaggle, fastText-формат)
-   - `models/baseline_model.pkl` — обученная baseline‑модель
-
-   После скачивания необходимо поместить в директорию проекта по указанным путям:
+   For review, the required files are available in a shared Google Drive folder:
 
    ```text
-   ml-conflict-situation-forecast/data/ru_toxic_2ch_pikabu.csv
-   ml-conflict-situation-forecast/data/ru_toxic_ok.txt
-   ml-conflict-situation-forecast/models/baseline_model.pkl
+   https://drive.google.com/drive/folders/1J-vftGANncLTPWcX7b7MGhfnJwSfVZnd?usp=sharing
    ```
 
-   Если `baseline_model.pkl` не скачивать, её можно обучить локально (см. шаг 5).
+   Place the downloaded files into:
 
-5. **Обучите baseline‑модель (если нужно)**
+   ```text
+   data/ru_toxic_2ch_pikabu.csv
+   data/ru_toxic_ok.txt
+   models/baseline_model.pkl
+   ```
+
+5. Train the baseline model if needed.
 
    ```bash
-   (venv) python -m src.baseline_model
+   python -m src.baseline_model
    ```
 
-   После выполнения в каталоге `models/` появится файл:
+   This creates:
 
    ```text
    models/baseline_model.pkl
    ```
 
-6. **Запустите веб‑приложение**
+6. Start the web application.
 
-  ```bash
-   (venv) python main.py
-   ```
-или
    ```bash
-   (venv) python -m src.app
+   python main.py
    ```
 
-   По умолчанию приложение стартует на порту **5500**.  
-   Откройте в браузере:
+   Or:
 
+   ```bash
+   python -m src.app
    ```
+
+   The application starts on port `5500` by default:
+
+   ```text
    http://127.0.0.1:5500/
    ```
 
-   На экране «Быстрый анализ» можно ввести текст сообщения и получить оценку вероятности
-   конфликтной ситуации. Запросы отправляются на endpoint:
-
-   - `POST /api/predict` — быстрый анализ одного сообщения.
-
----
-
-## Основные компоненты
+## Main Components
 
 ### `baseline_model.py`
 
-- загружает два русскоязычных датасета токсичных комментариев, объединяет их;
-- формирует ML‑pipeline (TF‑IDF + `OneVsRestClassifier(LogisticRegression)`);
-- обучает бинарную модель "toxic / non_toxic" и сохраняет её в `models/baseline_model.pkl`;
-- выводит базовые метрики качества (classification report) в консоль.
+- Loads and combines Russian-language toxic comment datasets.
+- Builds a TF-IDF plus `OneVsRestClassifier(LogisticRegression)` pipeline.
+- Trains a binary toxic/non-toxic model.
+- Saves the model to `models/baseline_model.pkl`.
+- Prints basic quality metrics.
 
 ### `model_service.py`
 
-- загружает обученную baseline‑модель;
-- предоставляет методы:
+- Loads the trained baseline model.
+- Provides prediction methods:
   - `predict_single(text: str) -> dict`
   - `predict_batch(texts: List[str]) -> List[dict]`
-- возвращает:
-  - вероятность токсичности (один класс);
-  - агрегированный `conflict_score` и уровень риска.
+- Returns toxicity probability, conflict score, and risk level.
 
 ### `app.py`
 
-- инициализирует Flask‑приложение;
-- отдаёт `index.html` по корневому маршруту `/`;
-- реализует REST‑endpoint:
+- Starts the Flask application.
+- Serves `index.html`.
+- Provides the `POST /api/predict` endpoint.
 
-  - `POST /api/predict` — анализ одного сообщения (используется веб‑интерфейсом).
-
-Ответ имеет вид:
+Example response:
 
 ```json
 {
@@ -179,23 +160,9 @@ ml-conflict-situation-forecast/
 }
 ```
 
-### `index.html`
+## Current Limitations and Plans
 
-- прототип интерфейса системы:
-  - «Быстрый анализ сообщения» — **подключён к backend** и использует `/api/predict`;
-  - «Пакетный анализ», «История», «Обучение модели»
-- вся верстка и тексты интерфейса — на русском языке, в соответствии с требованиями к отчёту.
-
----
-
-## Ограничения и планы развития
-
-- baseline‑модель обучена на русскоязычных корпусах токсичных комментариев (2ch, Pikabu, ok.ru). Эти данные шумные и тематически специфичные, из‑за чего возможны ложные срабатывания и ошибки классификации для нейтральных или нестандартных текстов. Прототип используется для демонстрации архитектуры и рабочих механизмов системы.
-- в рамках ВКР планируется:
-  - дальнейшее улучшение качества модели на русскоязычных данных;
-  - обучение и интеграция DL‑модели (LSTM/GRU или трансформер);
-  - реализация реального пакетного анализа и истории запусков;
-  - расширение отчётности и метрик.
-
-Этот README отражает текущее состояние проекта и может использоваться преподавателем
-для развертывания и проверки работоспособности прототипа.
+- The baseline model is trained on noisy Russian-language toxicity datasets from 2ch, Pikabu, and ok.ru.
+- False positives and classification errors are possible.
+- The prototype demonstrates architecture and working mechanics rather than production accuracy.
+- Planned work includes better model quality, deep learning integration, batch analysis, run history, and richer reports.
